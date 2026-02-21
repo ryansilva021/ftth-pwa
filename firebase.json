@@ -4,10 +4,14 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "functions/**"
     ],
-    "headers": [
-      { "source": "/service-worker.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": "proxy"
+      }
     ]
   }
 }
