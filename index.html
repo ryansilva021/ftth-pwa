@@ -4427,26 +4427,61 @@ function callServer(fnName, args, onSuccess, onFail) {
     return;
   }
 
-  // Website/Firebase Hosting: chama o Apps Script Web App via JSON (POST)
+  // Website/Firebase Hosting: chama o Worker (ou WebApp) via JSON (POST)
   if (!window.API_BASE || String(window.API_BASE).includes("PASTE_YOUR_APPS_SCRIPT_WEBAPP_URL")) {
     (onFail || showError)(
-      "API_BASE não configurada. Cole a URL do seu Apps Script Web App (…/exec) em window.API_BASE."
+      "API_BASE não configurada. Defina window.API_BASE com a URL do seu Worker (ou Apps Script Web App …/exec)."
     );
     return;
   }
 
+  const token = (typeof currentToken === 'function') ? (currentToken() || '') : (getStoredToken() || '');
+  const headers = { "Content-Type": "application/json" };
+  // Envia o token também no header (recomendado) para o Worker validar via Authorization: Bearer
+  if (token) headers["Authorization"] = "Bearer " + token;
+
   fetch(window.API_BASE, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
+    cache: "no-store",
     body: JSON.stringify({
       fn: fnName,
       args: Array.isArray(args) ? args : [],
-      token: (window.session && window.session.token) ? window.session.token : null
+      // Mantém no body por compatibilidade com versões antigas do backend
+      token: token || null
     })
   })
-    .then((r) => r.json())
-    .then((json) => {
-      if (json && json.error) throw new Error(json.error);
+    .then(async (r) => {
+      let json = null;
+      try { json = await r.json(); } catch (_) { /* non-json */ }
+
+      // Se o Worker retornar 401/403, força logout local
+      if (r.status === 401 || r.status === 403) {
+        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : "Não autenticado.";
+        try { setStoredToken(''); } catch(_) {}
+        if (window.AUTH) { AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false; }
+        try { updateAuthBar(); } catch(_) {}
+        try { showLogin(msg); } catch(_) {}
+        throw new Error(msg);
+      }
+
+      if (!r.ok) {
+        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : ("Erro HTTP " + r.status);
+        throw new Error(msg);
+      }
+
+      if (json && (json.error || json.ok === false)) {
+        const msg = json.error || json.message || "Erro desconhecido.";
+        // Alguns backends respondem 200 com "Não autenticado"
+        if (String(msg).toLowerCase().includes("não autenticado") || String(msg).toLowerCase().includes("nao autenticado")) {
+          try { setStoredToken(''); } catch(_) {}
+          if (window.AUTH) { AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false; }
+          try { updateAuthBar(); } catch(_) {}
+          try { showLogin(msg); } catch(_) {}
+        }
+        throw new Error(msg);
+      }
+
       (onSuccess || function () {})(json);
     })
     .catch((e) => {
@@ -4546,13 +4581,8 @@ function doGlobalSearch(){
   const hit = findFeatureById(q);
   if (!hit){ showToast('Nada encontrado para: ' + q); return; }
   if (map && hit.latlng){
-    const center = [hit.latlng.lng, hit.latlng.lat];
-    const zoom = Math.max((typeof map.getZoom==='function' ? map.getZoom() : 18), 18);
-    try { map.easeTo({ center, zoom, duration: 700 }); } catch(_) { try { map.flyTo({ center, zoom }); } catch(__){} }
-    try {
-      if (hit.marker && typeof hit.marker.togglePopup === 'function') hit.marker.togglePopup();
-      else if (hit.popup && typeof hit.popup.addTo === 'function') hit.popup.addTo(map);
-    } catch(_) {}
+    map.setView(hit.latlng, Math.max(map.getZoom(), 18), { animate:true });
+    if (hit.marker && hit.marker.openPopup) hit.marker.openPopup();
   }
 }
 
@@ -4564,7 +4594,7 @@ function findFeatureById(q){
     if (!reg) continue;
     const hit = reg.get ? reg.get(key) : reg[key];
     if (hit && hit.lngLat){
-      return { marker: hit.marker, popup: hit.popup, latlng: hit.lngLat, props: hit.props };
+      return { marker: hit.marker, latlng: hit.lngLat, props: hit.props };
     }
   }
   // fallback: busca por name
@@ -4573,7 +4603,7 @@ function findFeatureById(q){
     if (!reg) continue;
     const hit = reg.get ? reg.get(key) : reg[key];
     if (hit && hit.lngLat){
-      return { marker: hit.marker, popup: hit.popup, latlng: hit.lngLat, props: hit.props };
+      return { marker: hit.marker, latlng: hit.lngLat, props: hit.props };
     }
   }
   return null;
@@ -4858,8 +4888,14 @@ const fieldBtn = document.getElementById('fieldModeBtn');
   }
 
   function loadData() {
-    // Rodando fora do Apps Script: usamos callServer() que faz fetch em window.API_BASE.
-const token = currentToken();
+    if (!(window.google && google.script && google.script.run)) {
+      // Rodando fora do Apps Script ou google.script indisponível: mantém apenas o mapa base
+      map.setView([-23.55052, -46.633308], 12);
+      showError('google.script.run indisponível (HTML fora do Apps Script ou bloqueio de sandbox). O mapa base foi carregado, mas os dados não puderam ser buscados.');
+      return;
+    }
+
+    const token = currentToken();
     if (!token) { showLogin(); return; }
 
     callServer('getMapData', [token], (data) => {
@@ -6000,17 +6036,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="nearme-dist">${fmtKm(item.dist)}</div>
       `;
       btnItem.addEventListener('click', () => {
-        const ll = (item.layer && typeof item.layer.getLngLat==='function') ? item.layer.getLngLat() :
-                   (item.layer && typeof item.layer.getLatLng==='function') ? item.layer.getLatLng() : null;
+        const target = item.layer.getLatLng();
         closeModal();
-        if (!ll) return;
-        const center = Array.isArray(ll) ? ll : ('lng' in ll ? [ll.lng, ll.lat] : [ll.lng, ll.lat]);
-        try { theMap.easeTo({ center, zoom: 17, duration: 700 }); }
-        catch(_) { try { theMap.flyTo({ center, zoom: 17 }); } catch(__) { try { theMap.setView(ll, 17); } catch(___){} } }
-        try {
-          if (item.layer && typeof item.layer.togglePopup==='function') item.layer.togglePopup();
-          else if (item.layer && typeof item.layer.openPopup==='function') item.layer.openPopup();
-        } catch(_) {}
+        theMap.setView(target, 17);
+        if (item.layer.openPopup) item.layer.openPopup();
       });
       listEl.appendChild(btnItem);
     });
