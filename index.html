@@ -4436,8 +4436,9 @@ function callServer(fnName, args, onSuccess, onFail) {
   }
 
   const token = (typeof currentToken === 'function') ? (currentToken() || '') : (getStoredToken() || '');
-  const headers = { "Content-Type": "text/plain;charset=UTF-8" };
-  // CORS: evitar preflight por "Authorization". Enviamos o token no body.
+  const headers = { "Content-Type": "application/json" };
+  // Envia o token também no header (recomendado) para o Worker validar via Authorization: Bearer
+  if (token) headers["Authorization"] = "Bearer " + token;
 
   fetch(window.API_BASE, {
     method: "POST",
