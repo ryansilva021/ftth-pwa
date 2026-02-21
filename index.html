@@ -4546,8 +4546,13 @@ function doGlobalSearch(){
   const hit = findFeatureById(q);
   if (!hit){ showToast('Nada encontrado para: ' + q); return; }
   if (map && hit.latlng){
-    map.setView(hit.latlng, Math.max(map.getZoom(), 18), { animate:true });
-    if (hit.marker && hit.marker.openPopup) hit.marker.openPopup();
+    const center = [hit.latlng.lng, hit.latlng.lat];
+    const zoom = Math.max((typeof map.getZoom==='function' ? map.getZoom() : 18), 18);
+    try { map.easeTo({ center, zoom, duration: 700 }); } catch(_) { try { map.flyTo({ center, zoom }); } catch(__){} }
+    try {
+      if (hit.marker && typeof hit.marker.togglePopup === 'function') hit.marker.togglePopup();
+      else if (hit.popup && typeof hit.popup.addTo === 'function') hit.popup.addTo(map);
+    } catch(_) {}
   }
 }
 
@@ -4559,7 +4564,7 @@ function findFeatureById(q){
     if (!reg) continue;
     const hit = reg.get ? reg.get(key) : reg[key];
     if (hit && hit.lngLat){
-      return { marker: hit.marker, latlng: hit.lngLat, props: hit.props };
+      return { marker: hit.marker, popup: hit.popup, latlng: hit.lngLat, props: hit.props };
     }
   }
   // fallback: busca por name
@@ -4568,7 +4573,7 @@ function findFeatureById(q){
     if (!reg) continue;
     const hit = reg.get ? reg.get(key) : reg[key];
     if (hit && hit.lngLat){
-      return { marker: hit.marker, latlng: hit.lngLat, props: hit.props };
+      return { marker: hit.marker, popup: hit.popup, latlng: hit.lngLat, props: hit.props };
     }
   }
   return null;
@@ -4853,14 +4858,8 @@ const fieldBtn = document.getElementById('fieldModeBtn');
   }
 
   function loadData() {
-    if (!(window.google && google.script && google.script.run)) {
-      // Rodando fora do Apps Script ou google.script indisponível: mantém apenas o mapa base
-      map.setView([-23.55052, -46.633308], 12);
-      showError('google.script.run indisponível (HTML fora do Apps Script ou bloqueio de sandbox). O mapa base foi carregado, mas os dados não puderam ser buscados.');
-      return;
-    }
-
-    const token = currentToken();
+    // Rodando fora do Apps Script: usamos callServer() que faz fetch em window.API_BASE.
+const token = currentToken();
     if (!token) { showLogin(); return; }
 
     callServer('getMapData', [token], (data) => {
@@ -6001,10 +6000,17 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="nearme-dist">${fmtKm(item.dist)}</div>
       `;
       btnItem.addEventListener('click', () => {
-        const target = item.layer.getLatLng();
+        const ll = (item.layer && typeof item.layer.getLngLat==='function') ? item.layer.getLngLat() :
+                   (item.layer && typeof item.layer.getLatLng==='function') ? item.layer.getLatLng() : null;
         closeModal();
-        theMap.setView(target, 17);
-        if (item.layer.openPopup) item.layer.openPopup();
+        if (!ll) return;
+        const center = Array.isArray(ll) ? ll : ('lng' in ll ? [ll.lng, ll.lat] : [ll.lng, ll.lat]);
+        try { theMap.easeTo({ center, zoom: 17, duration: 700 }); }
+        catch(_) { try { theMap.flyTo({ center, zoom: 17 }); } catch(__) { try { theMap.setView(ll, 17); } catch(___){} } }
+        try {
+          if (item.layer && typeof item.layer.togglePopup==='function') item.layer.togglePopup();
+          else if (item.layer && typeof item.layer.openPopup==='function') item.layer.openPopup();
+        } catch(_) {}
       });
       listEl.appendChild(btnItem);
     });
