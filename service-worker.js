@@ -1,18 +1,17 @@
-const CACHE_NAME = "ftth-pwa-v3"; // <-- aumente quando quiser forçar update
+const CACHE_NAME = "ftth-pwa-v3";
 const ASSETS = [
   "/",
   "/index.html",
   "/manifest.json",
   "/service-worker.js",
+  "/favicon.ico",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
   self.skipWaiting();
 });
 

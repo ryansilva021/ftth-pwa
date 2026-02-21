@@ -3294,6 +3294,7 @@ body > div[role="banner"]{ display:none !important; }
 
 </style>
 
+  <link rel="icon" href="/favicon.ico">
 </head>
 <body>
 <!-- Unified Side Header Background (mobile-friendly) -->
@@ -3525,6 +3526,11 @@ body > div[role="banner"]{ display:none !important; }
 </div>
 </div>
 <script>
+  // ===== PWA build (Firebase Hosting) =====
+  // Cole aqui a URL do seu Apps Script Web App (termina com /exec)
+  // Ex: https://script.google.com/macros/s/XXXX/exec
+  window.API_BASE = "https://script.google.com/macros/s/AKfycbxPlmRMlQdaYGOLWK5GO9Z0EWEvafq3KO047R7k6uiEYCSazOUXaUHH7-LcEHmUxDU/exec";
+
 
   // ===== Debug: mostrar erros na tela (útil no Apps Script) =====
   function showError(err){
@@ -4404,30 +4410,48 @@ function hideLogin(){
   if (m) { m.textContent = ''; m.style.display = 'none'; }
 }
 
-function callServer(fnName, args, onSuccess, onFail){
-  if (!(window.google && google.script && google.script.run)) {
-    (onFail || function(e){ showError(e); })('google.script.run indisponível. Publique/execute como WebApp (Apps Script).');
+function callServer(fnName, args, onSuccess, onFail) {
+  // Apps Script HTMLService bridge (quando rodar dentro do Apps Script)
+  if (window.google && google.script && google.script.run) {
+    const runner = google.script.run
+      .withSuccessHandler(onSuccess || function () {})
+      .withFailureHandler(onFail || function (err) {
+        showError((err && err.message) ? err.message : String(err));
+      });
+
+    if (typeof runner[fnName] !== "function") {
+      (onFail || showError)(`Função não encontrada: ${fnName}`);
+      return;
+    }
+    runner[fnName].apply(runner, Array.isArray(args) ? args : []);
     return;
   }
-  const runner = google.script.run
-    .withSuccessHandler(function(res){
-      if (res == null) {
-        const e = new Error('Resposta vazia do servidor.');
-        (onFail || function(err){ showError(err?.message || String(err)); })(e);
-        return;
-      }
-      (onSuccess || function(){})(res);
+
+  // Website/Firebase Hosting: chama o Apps Script Web App via JSON (POST)
+  if (!window.API_BASE || String(window.API_BASE).includes("PASTE_YOUR_APPS_SCRIPT_WEBAPP_URL")) {
+    (onFail || showError)(
+      "API_BASE não configurada. Cole a URL do seu Apps Script Web App (…/exec) em window.API_BASE."
+    );
+    return;
+  }
+
+  fetch(window.API_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fn: fnName,
+      args: Array.isArray(args) ? args : [],
+      token: (window.session && window.session.token) ? window.session.token : null
     })
-    .withFailureHandler(onFail || function(err){ showError(err?.message || String(err)); });
-
-
-  if (typeof runner[fnName] !== 'function') {
-    const msg = `Função do servidor não encontrada: ${fnName}. ` +
-      `Atualize o Code.gs (incluindo as funções de rotas Admin) e publique uma NOVA versão do Web App.`;
-    (onFail || function(err){ showError(err?.message || String(err)); })(new Error(msg));
-    return;
-  }
-  (runner[fnName]).apply(runner, Array.isArray(args) ? args : []);
+  })
+    .then((r) => r.json())
+    .then((json) => {
+      if (json && json.error) throw new Error(json.error);
+      (onSuccess || function () {})(json);
+    })
+    .catch((e) => {
+      (onFail || showError)(e && e.message ? e.message : String(e));
+    });
 }
 
 function bootstrapAuth(){
