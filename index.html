@@ -4581,7 +4581,10 @@ function doGlobalSearch(){
   const hit = findFeatureById(q);
   if (!hit){ showToast('Nada encontrado para: ' + q); return; }
   if (map && hit.latlng){
-    map.setView(hit.latlng, Math.max(map.getZoom(), 18), { animate:true });
+    // MapLibre: centraliza e dá zoom no item encontrado
+    const lng = (hit.latlng.lng !== undefined) ? hit.latlng.lng : hit.latlng[0];
+    const lat = (hit.latlng.lat !== undefined) ? hit.latlng.lat : hit.latlng[1];
+    map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 18), essential: true });
     if (hit.marker && hit.marker.openPopup) hit.marker.openPopup();
   }
 }
@@ -4822,6 +4825,11 @@ function findFeatureById(q){
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     window.__maplibreMap = map;
+
+    // Carrega dados (CTOs/Rotas/CE-CDOs/Caixas) depois do mapa inicializar
+    map.once('load', () => {
+      try { loadData(); } catch(_) {}
+    });
 // UI refs
   UI.filterCaixa = document.getElementById('filterCaixa');
   UI.btnAddCaixaMode = document.getElementById('btnAddCaixaMode');
@@ -4888,16 +4896,11 @@ const fieldBtn = document.getElementById('fieldModeBtn');
   }
 
   function loadData() {
-    if (!(window.google && google.script && google.script.run)) {
-      // Rodando fora do Apps Script ou google.script indisponível: mantém apenas o mapa base
-      map.setView([-23.55052, -46.633308], 12);
-      showError('google.script.run indisponível (HTML fora do Apps Script ou bloqueio de sandbox). O mapa base foi carregado, mas os dados não puderam ser buscados.');
-      return;
-    }
-
     const token = currentToken();
     if (!token) { showLogin(); return; }
 
+    // Se estiver rodando dentro do Apps Script (HTMLService), usa google.script.run.
+    // Se estiver no Firebase Hosting/PWA, usa o Worker via fetch (callServer).
     callServer('getMapData', [token], (data) => {
       window.__DATA__ = data;
       renderLayers(data);
@@ -4912,9 +4915,12 @@ const fieldBtn = document.getElementById('fieldModeBtn');
         __OPEN_CAIXA_ID_AFTER_RELOAD__ = null;
       }
     }, (err) => {
-      const msg = err?.message || String(err);
+      const msg = err?.message || String(err || 'Erro ao carregar dados');
+      showError(err);
       if (/Sessão expirada|Não autenticado/i.test(msg)) {
         setStoredToken('');
+        if (window.AUTH) { AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false; }
+        try { updateAuthBar(); } catch(_) {}
         showLogin(msg);
         return;
       }
