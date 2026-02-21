@@ -6466,16 +6466,16 @@ function bind(){
 
 </script>
 
-<script>
-</script>
+
+
 
 
 <script>
 /* ===== V19: fix points parsing when textarea contains literal \n ===== */
 (function(){
   // Try to locate the existing parser by name; if not found, patch save handler extraction.
-  function normalizeText(t){ return String(t||'').replace(/\n/g, '
-'); }
+  function normalizeText(t){ return String(t||'').replace(/\\n/g, '\n'); }
+
 
   // Patch ROUTE_ADMIN.getPointsFromText if exists
   if (window.ROUTE_ADMIN && typeof window.ROUTE_ADMIN.getPointsFromTextarea === 'function'){
