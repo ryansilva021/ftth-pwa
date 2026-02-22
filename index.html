@@ -6597,6 +6597,7 @@ function bind(){
       bd.classList.add('hidden');
     }
   }, 1200);
+    <button onclick="testMe()">Testar /me</button>
 })();
 
 </script>
@@ -6627,6 +6628,17 @@ function bind(){
       return orig(normalizeText(text));
     };
   }
+
+async function testMe(){
+  const { getAuth } = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
+  const auth = getAuth();
+  if(!auth.currentUser){ alert("Sem login"); return; }
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(window.WORKER_URL + "/me", {
+    headers: { Authorization: "Bearer " + token }
+  });
+  alert(await r.text());
+}
 })();
 </script>
 
