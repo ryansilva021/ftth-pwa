@@ -3303,12 +3303,15 @@ body > div[role="banner"]{ display:none !important; }
   <script>
     // ====== CONFIG (AJUSTE AQUI) ======
     // Pegue em: Firebase Console -> Project settings -> Your apps -> Firebase SDK snippet (Config)
-    window.FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
-      apiKey: "PASTE_API_KEY",
-      authDomain: "ftth-pwa.firebaseapp.com",
-      projectId: "ftth-pwa",
-      appId: "PASTE_APP_ID"
-    };
+   window.firebaseConfig = {
+  apiKey: "AIzaSyBXm_bmI2IWdAYlRT4xTD3i62OKNRTnL7E",
+  authDomain: "ftth-pwa.firebaseapp.com",
+  projectId: "ftth-pwa",
+  storageBucket: "ftth-pwa.firebasestorage.app",
+  messagingSenderId: "500132406841",
+  appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8",
+  measurementId: "G-X5Y05H8RDC"
+  };
 
     // URL do seu Cloudflare Worker (o Worker que valida o Firebase ID Token e faz proxy para Apps Script)
     window.WORKER_URL = window.WORKER_URL || "https://PASTE_YOUR_WORKER_SUBDOMAIN.workers.dev";
