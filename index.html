@@ -3295,6 +3295,25 @@ body > div[role="banner"]{ display:none !important; }
 </style>
 
   <link rel="icon" href="/favicon.ico">
+
+  <!-- Firebase (compat) para manter este index em <script> normal -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+
+  <script>
+    // ====== CONFIG (AJUSTE AQUI) ======
+    // Pegue em: Firebase Console -> Project settings -> Your apps -> Firebase SDK snippet (Config)
+    window.FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
+      apiKey: "PASTE_API_KEY",
+      authDomain: "ftth-pwa.firebaseapp.com",
+      projectId: "ftth-pwa",
+      appId: "PASTE_APP_ID"
+    };
+
+    // URL do seu Cloudflare Worker (o Worker que valida o Firebase ID Token e faz proxy para Apps Script)
+    window.WORKER_URL = window.WORKER_URL || "https://PASTE_YOUR_WORKER_SUBDOMAIN.workers.dev";
+  </script>
+
 </head>
 <body>
 <!-- Unified Side Header Background (mobile-friendly) -->
@@ -3717,42 +3736,37 @@ function bindAuthBar(){
   }
 }
 
+
 function doLogout(){
-  // encerra sessão no servidor e limpa estado local (best-effort)
-  const t = currentToken();
+  // encerra sessão Firebase e limpa estado local
+  try{
+    if (window.__fb_auth && typeof window.__fb_auth.signOut === 'function'){
+      window.__fb_auth.signOut();
+    }
+  }catch(_){}
 
   // remove mapa (se existir) e limpa referências
   try {
     if (window.__maplibreMap && typeof window.__maplibreMap.remove === 'function') {
       window.__maplibreMap.remove();
     }
-  } catch (e) {}
+  } catch (_) {}
   window.__maplibreMap = null;
   window.__markersById = new Map();
   window.__caixasById = new Map();
 
-  const finish = () => {
-    // limpa token local
-    setStoredToken('');
-    try { sessionStorage.removeItem('ftth_token'); } catch(_){}
+  // reseta estado em memória
+  try { AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false; } catch(_) {}
 
-    // reseta estado em memória
-    try { AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false; } catch(_){}
+  // fecha UIs abertas
+  try { if (typeof closeAdmin === 'function') closeAdmin(); } catch(_) {}
+  try { if (typeof closeDrawer === 'function') closeDrawer(); } catch(_) {}
 
-    // fecha UIs abertas
-    try { if (typeof closeAdmin === 'function') closeAdmin(); } catch(_){}
-    try { if (typeof closeDrawer === 'function') closeDrawer(); } catch(_){}
-
-    // atualiza barra de auth (fica escondida)
-    try { updateAuthBar(); } catch(_){}
-
-    // volta para login sem recarregar
-    try { showLogin(''); } catch(_){}
-  };
-
-  // tenta invalidar no servidor (best-effort), mas sempre finaliza
-  callServer('logout', [t], finish, finish);
+  // atualiza barra de auth (fica escondida) + volta para login
+  try { updateAuthBar(); } catch(_) {}
+  try { showLogin(''); } catch(_) {}
 }
+
 
 
 
@@ -4430,8 +4444,9 @@ function hideLogin(){
   if (m) { m.textContent = ''; m.style.display = 'none'; }
 }
 
+
 function callServer(fnName, args, onSuccess, onFail) {
-  // Apps Script HTMLService bridge (quando rodar dentro do Apps Script)
+  // 1) Se estiver rodando DENTRO do Apps Script (HTMLService), mantém bridge
   if (window.google && google.script && google.script.run) {
     const runner = google.script.run
       .withSuccessHandler(onSuccess || function () {})
@@ -4447,50 +4462,133 @@ function callServer(fnName, args, onSuccess, onFail) {
     return;
   }
 
-  // Website/Firebase Hosting: chama o Apps Script Web App via JSON (POST)
-  if (!window.API_BASE || String(window.API_BASE).includes("PASTE_YOUR_APPS_SCRIPT_WEBAPP_URL")) {
-    (onFail || showError)(
-      "API_BASE não configurada. Cole a URL do seu Apps Script Web App (…/exec) em window.API_BASE."
-    );
+  // 2) Firebase Hosting / Website: chama o Worker (que valida o ID Token e faz proxy pro Apps Script)
+  const workerBase = (window.WORKER_URL || '').trim();
+  if (!workerBase || workerBase.includes('PASTE_YOUR_WORKER')) {
+    (onFail || showError)('WORKER_URL não configurado. Ajuste window.WORKER_URL no <head>.');
     return;
   }
 
-  fetch(window.API_BASE, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      fn: fnName,
-      args: Array.isArray(args) ? args : [],
-      token: (window.session && window.session.token) ? window.session.token : null
-    })
+  const token = currentToken();
+  if (!token) {
+    (onFail || showError)('Não autenticado. Faça login novamente.');
+    return;
+  }
+
+  const payload = {
+    fn: String(fnName || ''),
+    args: Array.isArray(args) ? args : []
+  };
+
+  fetch(workerBase, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify(payload),
+    mode: 'cors',
+    credentials: 'omit'
   })
-    .then((r) => r.json())
-    .then((json) => {
-      if (json && json.error) throw new Error(json.error);
-      (onSuccess || function () {})(json);
+    .then(async (r) => {
+      const text = await r.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch (_) {}
+      if (!r.ok) {
+        const errMsg = (json && (json.error || json.message)) ? (json.error || json.message) : text || ('HTTP ' + r.status);
+        throw new Error(errMsg);
+      }
+      return (json !== null) ? json : text;
     })
-    .catch((e) => {
-      (onFail || showError)(e && e.message ? e.message : String(e));
-    });
+    .then((res) => (onSuccess || function () {})(res))
+    .catch((e) => (onFail || showError)(e && e.message ? e.message : String(e)));
+}
+
+
+
+// ===== google.script.run shim (para código legado) =====
+// Assim, chamadas antigas como google.script.run.foo(a,b) passam a ir pelo Worker.
+(function(){
+  if (window.google && google.script && google.script.run) return;
+  window.google = window.google || {};
+  google.script = google.script || {};
+
+  let _ok = null, _fail = null;
+
+  const proxy = new Proxy({}, {
+    get(_t, prop){
+      if (prop === 'withSuccessHandler') return function(fn){ _ok = fn; return proxy; };
+      if (prop === 'withFailureHandler') return function(fn){ _fail = fn; return proxy; };
+
+      // método remoto: prop = nome da função do Apps Script / backend
+      return function(){
+        const args = Array.from(arguments || []);
+        callServer(String(prop), args,
+          function(res){ try{ (_ok||function(){})(res); } finally { _ok=null; _fail=null; } },
+          function(err){ try{ (_fail||function(e){ showError(e && e.message ? e.message : String(e)); })(err); } finally { _ok=null; _fail=null; } }
+        );
+      };
+    }
+  });
+
+  google.script.run = proxy;
+})();
+
+
+
+function initFirebase_(){
+  if (window.__fb_inited) return;
+  if (!window.firebase || !firebase.initializeApp) {
+    throw new Error('Firebase SDK não carregou (firebase-app-compat.js / firebase-auth-compat.js).');
+  }
+  if (!window.FIREBASE_CONFIG || String(window.FIREBASE_CONFIG.apiKey||'').startsWith('PASTE_')) {
+    console.warn('⚠️ Ajuste window.FIREBASE_CONFIG no <head> (apiKey/appId).');
+  }
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  window.__fb_inited = true;
+  window.__fb_auth = firebase.auth();
 }
 
 function bootstrapAuth(){
-  const t = getStoredToken();
-  if (!t) { AUTH.token=null; AUTH.user=null; AUTH.role=null; AUTH.ready=false; updateAuthBar(); showLogin(); bindLogin(); return; }
+  try{ initFirebase_(); }catch(e){ showLogin(e.message || String(e)); return; }
 
-  callServer('checkSession', [t], (res) => {
-    AUTH.token = t; AUTH.user = res.user; AUTH.role = res.role; AUTH.ready = true;
-    hideLogin();
-    bindLogin();
-    bindAuthBar();
-    updateAuthBar();
-    scheduleMapInit();
-}, (err) => {
-    setStoredToken('');
-    AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false;
-    updateAuthBar();
-    showLogin(err?.message || 'Sessão expirada. Faça login.');
-    bindLogin();
+  // Sempre preferir o estado do Firebase; não depender de token "manual"
+  AUTH.ready = false;
+  updateAuthBar();
+
+  window.__fb_auth.onIdTokenChanged(async (user) => {
+    if (!user){
+      AUTH.token = null;
+      AUTH.user = null;
+      AUTH.role = null;
+      AUTH.ready = false;
+      updateAuthBar();
+      showLogin();
+      bindLogin();
+      return;
+    }
+
+    try{
+      const token = await user.getIdToken();
+      const idTok = await user.getIdTokenResult();
+      const claims = idTok?.claims || {};
+      AUTH.token = token;
+      AUTH.user = { uid: user.uid, email: user.email || '' };
+      AUTH.role = claims.admin === true ? 'admin' : 'user';
+      AUTH.ready = true;
+
+      hideLogin();
+      bindLogin();
+      bindAuthBar();
+      updateAuthBar();
+      scheduleMapInit();
+    }catch(err){
+      AUTH.token = null; AUTH.user = null; AUTH.role = null; AUTH.ready = false;
+      updateAuthBar();
+      showLogin(err?.message || 'Falha ao obter token. Faça login novamente.');
+      try{ await window.__fb_auth.signOut(); }catch(_){}
+      bindLogin();
+    }
   });
 }
 
@@ -4505,39 +4603,29 @@ function bindLogin(){
   if (p && !p.__bound){ p.__bound=true; p.addEventListener('keydown', onKey); }
 }
 
-function doLogin(){
+async function doLogin(){
   const u = (document.getElementById('loginUser')?.value || '').trim();
   const p = (document.getElementById('loginPass')?.value || '').trim();
-  if (!u || !p) { showLogin('Preencha usuário e senha.'); return; }
+  if (!u || !p) { showLogin('Preencha e-mail e senha.'); return; }
 
   const btn = document.getElementById('btnLogin');
   if (btn) btn.disabled = true;
 
-  callServer('login', [u, p], (res) => {
-    if (btn) btn.disabled = false;
-    AUTH.token = res.token; AUTH.user = res.user; AUTH.role = res.role; AUTH.ready = true;
-    __lastLoginPassword = p;
-    if (res && res.mustChangePassword){
-      bindForcePasswordUI();
-      showForcePasswordChange();
-    }
-    setStoredToken(res.token);
-    hideLogin();
-    bindAuthBar();
-    updateAuthBar();
-    scheduleMapInit();
-}, (err) => {
-    if (btn) btn.disabled = false;
+  try{
+    initFirebase_();
+    await window.__fb_auth.signInWithEmailAndPassword(u, p);
+    // onIdTokenChanged vai cuidar do resto
+  }catch(err){
     showLogin(err?.message || 'Falha no login.');
-  });
+  }finally{
+    if (btn) btn.disabled = false;
+  }
 }
 
 function currentToken(){
-  return AUTH.token || getStoredToken();
+  return AUTH.token || '';
 }
-
-
-  // ===== Projeto (centro fixo) =====
+// ===== Projeto (centro fixo) =====
   const PROJECT_CENTER = [-41.9800, -22.2603]; // [lng, lat]
   const PROJECT_ZOOM = 14;
 
