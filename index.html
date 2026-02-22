@@ -110,23 +110,41 @@
       }
     };
 
-    window.testMe = async function () {
-      const out = document.getElementById("output");
-      try {
-        if (!auth.currentUser) {
-          out.textContent = "Usuário não logado.";
-          return;
-        }
-        const token = await auth.currentUser.getIdToken(true);
-        const r = await fetch(window.WORKER_URL + "/me", {
-          headers: { Authorization: "Bearer " + token }
-        });
-        const data = await r.json();
-        out.textContent = JSON.stringify(data, null, 2);
-      } catch (e) {
-        out.textContent = "Erro /me: " + e.message;
-      }
-    };
+    <script>
+async function testMe() {
+  const out = document.getElementById("output");
+  try {
+    const { getAuth } = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
+    const auth = getAuth();
+    if (!auth.currentUser) { out.textContent = "Usuário não logado."; return; }
+
+    const token = await auth.currentUser.getIdToken(true);
+    const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
+
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+
+    const ct = r.headers.get("content-type") || "";
+    const text = await r.text();
+
+    // Mostra sempre o retorno bruto (pra debug)
+    out.textContent =
+      `URL: ${url}\n` +
+      `HTTP: ${r.status}\n` +
+      `Content-Type: ${ct}\n\n` +
+      text;
+
+    // Se for JSON, tenta parse e reimprime formatado
+    if (ct.includes("application/json")) {
+      const data = JSON.parse(text);
+      out.textContent =
+        `URL: ${url}\nHTTP: ${r.status}\nContent-Type: ${ct}\n\n` +
+        JSON.stringify(data, null, 2);
+    }
+  } catch (e) {
+    out.textContent = "Erro /me: " + (e?.message || String(e));
+  }
+}
+</script>
   </script>
 </body>
 </html>
