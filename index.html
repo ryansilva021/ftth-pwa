@@ -7,20 +7,27 @@
 
   <!-- Config (não é segredo) -->
   <script>
-    // Mantém os dois nomes para evitar confusão com versões anteriores do seu projeto
-    window.FIREBASE_CONFIG = {
-      apiKey: "AIzaSyBXmBID1IWdAYLRT4xTD3i620KNRtnL7E",
-      authDomain: "ftth-pwa.firebaseapp.com",
-      projectId: "ftth-pwa",
-      appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8"
-    };
-    window.firebaseConfig = window.FIREBASE_CONFIG;
+  // CONFIG (do console Firebase)
+  const firebaseConfig = {
+    apiKey: "AIzaSyBXmBID1IWdAYLRT4xTD3i620KNRtnL7E",
+    authDomain: "ftth-pwa.firebaseapp.com",
+    projectId: "ftth-pwa",
+    appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8"
+  };
 
-    window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
+  // expõe para outros scripts se precisar
+  window.firebaseConfig = firebaseConfig;
+  window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
+</script>
 
-    // DEBUG: confirma deploy/cache
-    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-B";
-  </script>
+<!-- Firebase compat (sem modules) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+
+<script>
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+</script>
 
   <style>
     body{font-family:Arial,sans-serif;background:#0b1220;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
