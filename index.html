@@ -71,41 +71,19 @@
     }
 
     async function testMe() {
-      print("Chamando /me...");
-      try {
-        const user = auth.currentUser;
-        if (!user) { print("Usuário não logado."); return; }
+     print("Chamando /api/me...");
+     const user = auth.currentUser;
+     if (!user) { print("Usuário não logado."); return; }
 
-        const token = await user.getIdToken(true);
+     const token = await user.getIdToken(true); // força refresh
 
-        const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
-        const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+     const url = "/api/me"; // ✅ Firebase Hosting -> rewrite -> Cloud Function proxy
+     const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
 
-        const ct = r.headers.get("content-type") || "";
-        const text = await r.text();
-
-        let msg =
-          `BUILD: ${window.__BUILD_ID__}\n` +
-          `URL: ${url}\n` +
-          `HTTP: ${r.status}\n` +
-          `Content-Type: ${ct}\n\n` +
-          text;
-
-        if (ct.includes("application/json")) {
-          try { msg = JSON.stringify(JSON.parse(text), null, 2); } catch {}
-          msg =
-            `BUILD: ${window.__BUILD_ID__}\n` +
-            `URL: ${url}\n` +
-            `HTTP: ${r.status}\n` +
-            `Content-Type: ${ct}\n\n` +
-            msg;
-        }
-
-        print(msg);
-      } catch (e) {
-        print("Erro /me: " + (e?.message || String(e)));
-      }
-    }
+     const ct = r.headers.get("content-type") || "";
+     const text = await r.text();
+     print(`HTTP: ${r.status}\nCT: ${ct}\n\n${text}`);
+}
 
     document.getElementById("btnLogin").addEventListener("click", login);
     document.getElementById("btnMe").addEventListener("click", testMe);
