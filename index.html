@@ -71,18 +71,21 @@
     }
 
     async function testMe() {
-     print("Chamando /api/me...");
-     const user = auth.currentUser;
-     if (!user) { print("Usuário não logado."); return; }
+  print("Chamando /me no Worker...");
+  const user = auth.currentUser;
+  if (!user) return print("Usuário não logado.");
 
-     const token = await user.getIdToken(true); // força refresh
+  const token = await user.getIdToken(true);
+  const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
 
-     const url = "/api/me"; // ✅ Firebase Hosting -> rewrite -> Cloud Function proxy
-     const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+  const data = await r.json();
 
-     const ct = r.headers.get("content-type") || "";
-     const text = await r.text();
-     print(`HTTP: ${r.status}\nCT: ${ct}\n\n${text}`);
+  print(JSON.stringify(data, null, 2));
+
+  if (data.ok && data.admin) {
+    window.location.href = "/mapa.html"; // ajuste pro caminho real do seu mapa
+  }
 }
 
     document.getElementById("btnLogin").addEventListener("click", login);
