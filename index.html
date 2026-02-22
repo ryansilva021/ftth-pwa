@@ -5,146 +5,125 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FTTH-PWA Login</title>
 
-  <!-- Firebase Config (OBRIGATÓRIO) -->
+  <!-- Config (não é segredo) -->
   <script>
+    // Mantém os dois nomes para evitar confusão com versões anteriores do seu projeto
     window.FIREBASE_CONFIG = {
-      apiKey: "AIzaSyBXm_bmI2IWdAYlRT4xTD3i62OKNRTnL7E",
+      apiKey: "AIzaSyBXmBID1IWdAYLRT4xTD3i620KNRtnL7E",
       authDomain: "ftth-pwa.firebaseapp.com",
       projectId: "ftth-pwa",
       appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8"
     };
+    window.firebaseConfig = window.FIREBASE_CONFIG;
 
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
 
     // DEBUG: confirma deploy/cache
-    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-A";
+    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-B";
   </script>
 
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0b1220;
-      color: white;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .card {
-      background: #111a2e;
-      padding: 24px;
-      border-radius: 12px;
-      width: 320px;
-      box-shadow: 0 0 20px rgba(0,0,0,0.4);
-    }
-    h2 {
-      margin-top: 0;
-      text-align: center;
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border-radius: 6px;
-      border: none;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      margin-top: 10px;
-      border: none;
-      border-radius: 6px;
-      background: #22c55e;
-      color: black;
-      font-weight: bold;
-      cursor: pointer;
-    }
-    .info {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #9ca3af;
-      text-align: center;
-    }
-    pre {
-      margin-top: 12px;
-      font-size: 11px;
-      background: #020617;
-      padding: 10px;
-      border-radius: 6px;
-      overflow: auto;
-      max-height: 120px;
-    }
+    body{font-family:Arial,sans-serif;background:#0b1220;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
+    .card{background:#111a2e;padding:24px;border-radius:12px;width:320px;box-shadow:0 0 20px rgba(0,0,0,.4)}
+    h2{margin:0 0 12px;text-align:center}
+    input{width:100%;padding:10px;margin:8px 0;border-radius:6px;border:none}
+    button{width:100%;padding:10px;margin-top:10px;border:none;border-radius:6px;background:#22c55e;color:#000;font-weight:700;cursor:pointer}
+    .info{margin-top:10px;font-size:12px;color:#9ca3af;text-align:center}
+    pre{margin-top:12px;font-size:11px;background:#020617;padding:10px;border-radius:6px;overflow:auto;max-height:170px;white-space:pre-wrap}
   </style>
+
+  <!-- Firebase (compat) para evitar problemas de import/module -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 </head>
 
 <body>
   <div class="card">
     <h2>🔐 Login FTTH</h2>
-    <input id="email" placeholder="email" />
-    <input id="password" type="password" placeholder="senha" />
-    <button onclick="login()">Entrar</button>
-    <button onclick="testMe()">Testar /me</button>
+
+    <input id="email" placeholder="email" autocomplete="username" />
+    <input id="password" type="password" placeholder="senha" autocomplete="current-password" />
+
+    <button id="btnLogin">Entrar</button>
+    <button id="btnMe">Testar /me</button>
+
     <div class="info">Login via Firebase + Worker + Custom Claims</div>
     <pre id="output"></pre>
   </div>
 
-  <!-- Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  <script>
+    const out = document.getElementById("output");
+    function print(msg){ out.textContent = String(msg); }
 
-    const app = initializeApp(window.FIREBASE_CONFIG);
-    const auth = getAuth(app);
-
-    window.login = async function () {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      const out = document.getElementById("output");
-
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        out.textContent = "Login OK: " + cred.user.email;
-      } catch (e) {
-        out.textContent = "Erro login: " + e.message;
-      }
-    };
-
-    <script>
-async function testMe() {
-  const out = document.getElementById("output");
-  try {
-    const { getAuth } = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
-    const auth = getAuth();
-    if (!auth.currentUser) { out.textContent = "Usuário não logado."; return; }
-
-    const token = await auth.currentUser.getIdToken(true);
-    const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
-
-    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-
-    const ct = r.headers.get("content-type") || "";
-    const text = await r.text();
-
-    // Mostra sempre o retorno bruto (pra debug)
-    out.textContent =
-      `URL: ${url}\n` +
-      `HTTP: ${r.status}\n` +
-      `Content-Type: ${ct}\n\n` +
-      text;
-
-    // Se for JSON, tenta parse e reimprime formatado
-    if (ct.includes("application/json")) {
-      const data = JSON.parse(text);
-      out.textContent =
-        `URL: ${url}\nHTTP: ${r.status}\nContent-Type: ${ct}\n\n` +
-        JSON.stringify(data, null, 2);
+    // Inicializa Firebase (compat)
+    try{
+      firebase.initializeApp(window.FIREBASE_CONFIG);
+    }catch(e){
+      // pode tentar inicializar 2x em hot reload/cache
     }
-  } catch (e) {
-    out.textContent = "Erro /me: " + (e?.message || String(e));
-  }
-}
-</script>
+    const auth = firebase.auth();
+
+    async function login(){
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      print("Logando...");
+      try{
+        const cred = await auth.signInWithEmailAndPassword(email, password);
+        print("Login OK: " + (cred.user && cred.user.email));
+      }catch(e){
+        print("Erro login: " + (e && e.message ? e.message : e));
+      }
+    }
+
+    async function testMe(){
+      print("Chamando /me...");
+      try{
+        const user = auth.currentUser;
+        if(!user){ print("Usuário não logado."); return; }
+
+        const token = await user.getIdToken(true);
+
+        const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
+        const r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
+
+        const ct = r.headers.get("content-type") || "";
+        const text = await r.text();
+
+        // Sempre mostra debug completo (evita erro de JSON)
+        let msg =
+          "BUILD: " + (window.__BUILD_ID__ || "-") + "\n" +
+          "URL: " + url + "\n" +
+          "HTTP: " + r.status + "\n" +
+          "Content-Type: " + ct + "\n\n" +
+          text;
+
+        // Se vier JSON, formata bonitinho
+        if(ct.includes("application/json")){
+          try{
+            const data = JSON.parse(text);
+            msg =
+              "BUILD: " + (window.__BUILD_ID__ || "-") + "\n" +
+              "URL: " + url + "\n" +
+              "HTTP: " + r.status + "\n" +
+              "Content-Type: " + ct + "\n\n" +
+              JSON.stringify(data, null, 2);
+          }catch(_){}
+        }
+
+        print(msg);
+      }catch(e){
+        print("Erro /me: " + (e && e.message ? e.message : e));
+      }
+    }
+
+    // garante que os botões sempre chamam funções válidas
+    document.getElementById("btnLogin").addEventListener("click", login);
+    document.getElementById("btnMe").addEventListener("click", testMe);
+
+    // expõe no window se você quiser chamar pelo console
+    window.login = login;
+    window.testMe = testMe;
   </script>
 </body>
 </html>
