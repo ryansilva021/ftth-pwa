@@ -5,29 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FTTH-PWA Login</title>
 
-  <!-- Config (não é segredo) -->
+  <!-- CONFIG (Firebase Console) -->
   <script>
-  // CONFIG (do console Firebase)
-  const firebaseConfig = {
-    apiKey: "AIzaSyBXmBID1IWdAYLRT4xTD3i620KNRtnL7E",
-    authDomain: "ftth-pwa.firebaseapp.com",
-    projectId: "ftth-pwa",
-    appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8"
-  };
+    window.firebaseConfig = {
+      apiKey: "AIzaSyBXmBID1IWdAYlRT4xTD3i620KNRtnL7E",
+      authDomain: "ftth-pwa.firebaseapp.com",
+      projectId: "ftth-pwa",
+      appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8"
+    };
 
-  // expõe para outros scripts se precisar
-  window.firebaseConfig = firebaseConfig;
-  window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-</script>
+    window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
 
-<!-- Firebase compat (sem modules) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    // DEBUG: muda quando fizer deploy pra confirmar cache
+    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-C";
+  </script>
 
-<script>
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-</script>
+  <!-- Firebase COMPAT (somente uma vez) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
   <style>
     body{font-family:Arial,sans-serif;background:#0b1220;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}
@@ -38,10 +33,6 @@
     .info{margin-top:10px;font-size:12px;color:#9ca3af;text-align:center}
     pre{margin-top:12px;font-size:11px;background:#020617;padding:10px;border-radius:6px;overflow:auto;max-height:170px;white-space:pre-wrap}
   </style>
-
-  <!-- Firebase (compat) para evitar problemas de import/module -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 </head>
 
 <body>
@@ -60,75 +51,66 @@
 
   <script>
     const out = document.getElementById("output");
-    function print(msg){ out.textContent = String(msg); }
+    const print = (msg) => (out.textContent = String(msg));
 
-    // Inicializa Firebase (compat)
-    try{
-      firebase.initializeApp(window.FIREBASE_CONFIG);
-    }catch(e){
-      // pode tentar inicializar 2x em hot reload/cache
-    }
+    // Inicializa Firebase UMA VEZ
+    firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
 
-    async function login(){
+    async function login() {
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
 
       print("Logando...");
-      try{
+      try {
         const cred = await auth.signInWithEmailAndPassword(email, password);
-        print("Login OK: " + (cred.user && cred.user.email));
-      }catch(e){
-        print("Erro login: " + (e && e.message ? e.message : e));
+        print(`Login OK: ${cred.user.email}\nUID: ${cred.user.uid}`);
+      } catch (e) {
+        print("Erro login: " + (e?.message || String(e)));
       }
     }
 
-    async function testMe(){
+    async function testMe() {
       print("Chamando /me...");
-      try{
+      try {
         const user = auth.currentUser;
-        if(!user){ print("Usuário não logado."); return; }
+        if (!user) { print("Usuário não logado."); return; }
 
         const token = await user.getIdToken(true);
 
         const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
-        const r = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
+        const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
 
         const ct = r.headers.get("content-type") || "";
         const text = await r.text();
 
-        // Sempre mostra debug completo (evita erro de JSON)
         let msg =
-          "BUILD: " + (window.__BUILD_ID__ || "-") + "\n" +
-          "URL: " + url + "\n" +
-          "HTTP: " + r.status + "\n" +
-          "Content-Type: " + ct + "\n\n" +
+          `BUILD: ${window.__BUILD_ID__}\n` +
+          `URL: ${url}\n` +
+          `HTTP: ${r.status}\n` +
+          `Content-Type: ${ct}\n\n` +
           text;
 
-        // Se vier JSON, formata bonitinho
-        if(ct.includes("application/json")){
-          try{
-            const data = JSON.parse(text);
-            msg =
-              "BUILD: " + (window.__BUILD_ID__ || "-") + "\n" +
-              "URL: " + url + "\n" +
-              "HTTP: " + r.status + "\n" +
-              "Content-Type: " + ct + "\n\n" +
-              JSON.stringify(data, null, 2);
-          }catch(_){}
+        if (ct.includes("application/json")) {
+          try { msg = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+          msg =
+            `BUILD: ${window.__BUILD_ID__}\n` +
+            `URL: ${url}\n` +
+            `HTTP: ${r.status}\n` +
+            `Content-Type: ${ct}\n\n` +
+            msg;
         }
 
         print(msg);
-      }catch(e){
-        print("Erro /me: " + (e && e.message ? e.message : e));
+      } catch (e) {
+        print("Erro /me: " + (e?.message || String(e)));
       }
     }
 
-    // garante que os botões sempre chamam funções válidas
     document.getElementById("btnLogin").addEventListener("click", login);
     document.getElementById("btnMe").addEventListener("click", testMe);
 
-    // expõe no window se você quiser chamar pelo console
+    // se quiser chamar pelo console
     window.login = login;
     window.testMe = testMe;
   </script>
