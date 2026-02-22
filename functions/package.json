@@ -1,5 +1,3 @@
-cd ~/ftth-pwa/functions
-cat > package.json << 'EOF'
 {
   "name": "functions",
   "description": "Firebase Functions for FTTH proxy",
@@ -13,4 +11,3 @@ cat > package.json << 'EOF'
     "node-fetch": "^3.3.2"
   }
 }
-EOF
