@@ -96,7 +96,7 @@
     print(msg);
 
     // ✅ libera o mapa se admin
-    if (data?.ok && data?.admin === false) {
+    if (data?.ok && data?.admin === true) {
       // ajuste aqui para o arquivo real do mapa no seu hosting
       window.location.href = "/mapa.html";
     }
