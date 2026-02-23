@@ -71,20 +71,37 @@
     }
 
     async function testMe() {
-  print("Chamando /me no Worker...");
-  const user = auth.currentUser;
-  if (!user) return print("Usuário não logado.");
+  print("Chamando Worker /me...");
+  try {
+    const user = auth.currentUser;
+    if (!user) { print("Usuário não logado."); return; }
 
-  const token = await user.getIdToken(true);
-  const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
+    const token = await user.getIdToken(true);
 
-  const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-  const data = await r.json();
+    const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
 
-  print(JSON.stringify(data, null, 2));
+    const ct = r.headers.get("content-type") || "";
+    const text = await r.text();
+    let data = null;
+    if (ct.includes("application/json")) data = JSON.parse(text);
 
-  if (data.ok && data.admin) {
-    window.location.href = "/mapa.html"; // ajuste pro caminho real do seu mapa
+    const msg =
+      `BUILD: ${window.__BUILD_ID__}\n` +
+      `URL: ${url}\n` +
+      `HTTP: ${r.status}\n` +
+      `Content-Type: ${ct}\n\n` +
+      (data ? JSON.stringify(data, null, 2) : text);
+
+    print(msg);
+
+    // ✅ libera o mapa se admin
+    if (data?.ok && data?.admin === false) {
+      // ajuste aqui para o arquivo real do mapa no seu hosting
+      window.location.href = "/mapa.html";
+    }
+  } catch (e) {
+    print("Erro /me: " + (e?.message || String(e)));
   }
 }
 
