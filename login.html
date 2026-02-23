@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FTTH-PWA Login</title>
 
-  <!-- CONFIG (Firebase Console) -->
   <script>
     window.firebaseConfig = {
       apiKey: "AIzaSyBXm_bmI2IWdAYlRT4xTD3i62OKNRTnL7E",
@@ -15,12 +14,9 @@
     };
 
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-
-    // DEBUG: muda quando fizer deploy pra confirmar cache
-    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-C";
+    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-LOGIN-D";
   </script>
 
-  <!-- Firebase COMPAT (somente uma vez) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
@@ -31,7 +27,7 @@
     input{width:100%;padding:10px;margin:8px 0;border-radius:6px;border:none}
     button{width:100%;padding:10px;margin-top:10px;border:none;border-radius:6px;background:#22c55e;color:#000;font-weight:700;cursor:pointer}
     .info{margin-top:10px;font-size:12px;color:#9ca3af;text-align:center}
-    pre{margin-top:12px;font-size:11px;background:#020617;padding:10px;border-radius:6px;overflow:auto;max-height:170px;white-space:pre-wrap}
+    pre{margin-top:12px;font-size:11px;background:#020617;padding:10px;border-radius:6px;overflow:auto;max-height:220px;white-space:pre-wrap}
   </style>
 </head>
 
@@ -45,7 +41,7 @@
     <button id="btnLogin">Entrar</button>
     <button id="btnMe">Testar /me</button>
 
-    <div class="info">Login via Firebase + Worker + Custom Claims</div>
+    <div class="info">Firebase Auth + Cloudflare Worker (/me)</div>
     <pre id="output"></pre>
   </div>
 
@@ -53,9 +49,40 @@
     const out = document.getElementById("output");
     const print = (msg) => (out.textContent = String(msg));
 
-    // Inicializa Firebase UMA VEZ
     firebase.initializeApp(window.firebaseConfig);
     const auth = firebase.auth();
+
+    function workerBase() {
+      return (window.WORKER_URL || "").replace(/\/$/, "");
+    }
+
+    async function callMeAndRedirectIfAdmin({ redirect = true } = {}) {
+      const user = auth.currentUser;
+      if (!user) return { ok: false, error: "not_logged_in" };
+
+      const token = await user.getIdToken(true);
+      const url = workerBase() + "/me";
+
+      const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+      const ct = r.headers.get("content-type") || "";
+      const text = await r.text();
+
+      let data = null;
+      if (ct.includes("application/json")) {
+        try { data = JSON.parse(text); } catch {}
+      }
+
+      if (!data) {
+        return { ok: false, error: "bad_response", http: r.status, raw: text };
+      }
+
+      // Se for admin, redireciona para o mapa
+      if (redirect && data.ok && data.admin === true) {
+        window.location.href = "/index.html";
+      }
+
+      return data;
+    }
 
     async function login() {
       const email = document.getElementById("email").value.trim();
@@ -64,51 +91,49 @@
       print("Logando...");
       try {
         const cred = await auth.signInWithEmailAndPassword(email, password);
-        print(`Login OK: ${cred.user.email}\nUID: ${cred.user.uid}`);
+        print(`Login OK: ${cred.user.email}\nUID: ${cred.user.uid}\n\nVerificando /me...`);
+
+        const data = await callMeAndRedirectIfAdmin({ redirect: true });
+
+        // Se não redirecionou, mostra o resultado
+        print(
+          `BUILD: ${window.__BUILD_ID__}\n` +
+          `WORKER: ${workerBase()}\n\n` +
+          JSON.stringify(data, null, 2)
+        );
       } catch (e) {
         print("Erro login: " + (e?.message || String(e)));
       }
     }
 
     async function testMe() {
-  print("Chamando Worker /me...");
-  try {
-    const user = auth.currentUser;
-    if (!user) { print("Usuário não logado."); return; }
-
-    const token = await user.getIdToken(true);
-
-    const url = (window.WORKER_URL || "").replace(/\/$/, "") + "/me";
-    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-
-    const ct = r.headers.get("content-type") || "";
-    const text = await r.text();
-    let data = null;
-    if (ct.includes("application/json")) data = JSON.parse(text);
-
-    const msg =
-      `BUILD: ${window.__BUILD_ID__}\n` +
-      `URL: ${url}\n` +
-      `HTTP: ${r.status}\n` +
-      `Content-Type: ${ct}\n\n` +
-      (data ? JSON.stringify(data, null, 2) : text);
-
-    print(msg);
-
-    // ✅ libera o mapa se admin
-    if (data?.ok && data?.admin === true) {
-      // ajuste aqui para o arquivo real do mapa no seu hosting
-      window.location.href = "/mapa.html";
+      print("Chamando Worker /me...");
+      try {
+        const data = await callMeAndRedirectIfAdmin({ redirect: false });
+        print(
+          `BUILD: ${window.__BUILD_ID__}\n` +
+          `WORKER: ${workerBase()}\n\n` +
+          JSON.stringify(data, null, 2)
+        );
+      } catch (e) {
+        print("Erro /me: " + (e?.message || String(e)));
+      }
     }
-  } catch (e) {
-    print("Erro /me: " + (e?.message || String(e)));
-  }
-}
 
     document.getElementById("btnLogin").addEventListener("click", login);
     document.getElementById("btnMe").addEventListener("click", testMe);
 
-    // se quiser chamar pelo console
+    // Se já estiver logado, tenta redirecionar automaticamente
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) return;
+      try {
+        print("Sessão encontrada. Verificando permissão...");
+        await callMeAndRedirectIfAdmin({ redirect: true });
+      } catch (e) {
+        // fica na tela
+      }
+    });
+
     window.login = login;
     window.testMe = testMe;
   </script>
