@@ -1,3 +1,12 @@
+# rotas “bonitas” para arquivos reais (REWRITE 200)
+#/login e /index devem SERVIR o HTML, não redirecionar
 /login   /login.html   200
 /index   /index.html   200
-/        /login.html   200
+
+# raiz do site vai para login (pode ser 302 ou 200; recomendo 302 aqui)
+# se usar 200, vira rewrite interno; se usar 302, muda a URL no browser.
+# Eu recomendo 302 para raiz:
+ /        /login        302
+
+# opcional: se alguém acessar /login/ com barra, manda pro /login (302)
+#/login/  /login  302
