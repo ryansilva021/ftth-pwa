@@ -133,6 +133,7 @@
   <div class="fabCol" aria-label="Ações">
     <div class="fab" id="btnGPS" title="Minha localização">📍</div>
     <div class="fab fabSmall" id="btnFollow" title="Seguir GPS (liga/desliga)">🧭</div>
+    <div class="fab fabSmall" id="btnSync" title="Sincronizar pendentes">🔄</div>
     <div class="fab fabSmall" id="btnReg" title="Registrar (último selecionado)">✍️</div>
   </div>
 
@@ -159,6 +160,7 @@
 
       const btnGPS = document.getElementById("btnGPS");
       const btnFollow = document.getElementById("btnFollow");
+      const btnSync = document.getElementById("btnSync");
       const btnReg = document.getElementById("btnReg");
 
       const sheet = document.getElementById("sheet");
@@ -287,7 +289,77 @@
       }
 
       // Registro (offline-first): salva em localStorage (fila) e mostra export
-      function getQueue() {
+      
+      async function ensureSubmitKey() {
+        let k = localStorage.getItem("ftth_submit_key") || "";
+        if (!k) {
+          k = prompt("Chave de sincronização (SUBMIT_KEY):") || "";
+          k = k.trim();
+          if (k) localStorage.setItem("ftth_submit_key", k);
+        }
+        return k;
+      }
+
+      async function syncQueue() {
+        const q = getQueue();
+        if (!q.length) {
+          if (badge) badge.textContent = "Sem pendências para sincronizar";
+          return;
+        }
+
+        const key = await ensureSubmitKey();
+        if (!key) {
+          if (badge) badge.textContent = "Sync cancelado (sem chave)";
+          return;
+        }
+
+        try {
+          if (badge) badge.textContent = `Sincronizando ${q.length}...`;
+          const res = await fetch(`${window.WORKER_URL}/api/submit`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-ftth-key": key
+            },
+            body: JSON.stringify({ items: q })
+          });
+
+          const txt = await res.text();
+          let data = null;
+          try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+
+          if (!res.ok || data?.ok === false) {
+            throw new Error(data?.error || `HTTP ${res.status}`);
+          }
+
+          // Success: clear queue
+          setQueue([]);
+          if (badge) badge.textContent = `✅ Sync OK • enviados: ${data.accepted ?? q.length}`;
+          openSheet("Sincronizado", `Enviados: <b>${data.accepted ?? q.length}</b> • Rejeitados: <b>${data.rejected ?? 0}</b>`,
+            `<div class="btnRow">
+              <button class="btn btnPrimary" id="okClose">OK</button>
+             </div>
+             <div class="hint">As linhas foram gravadas no Google Sheets via Apps Script.</div>`);
+          document.getElementById("okClose").onclick = closeSheet;
+        } catch (err) {
+          console.error(err);
+          if (badge) badge.textContent = `❌ Sync falhou: ${String(err?.message ?? err)}`;
+          openSheet("Falha na sincronização", `${String(err?.message ?? err)}`,
+            `<div class="hint">Verifique se o Worker tem APPS_SCRIPT_URL e SUBMIT_KEY configurados e se a chave no celular está correta.</div>
+             <div class="btnRow">
+               <button class="btn btnWarn" id="tryAgain">Tentar novamente</button>
+               <button class="btn" id="changeKey">Trocar chave</button>
+             </div>`);
+          document.getElementById("tryAgain").onclick = () => { closeSheet(); syncQueue(); };
+          document.getElementById("changeKey").onclick = () => {
+            localStorage.removeItem("ftth_submit_key");
+            closeSheet();
+            syncQueue();
+          };
+        }
+      }
+
+function getQueue() {
         try { return JSON.parse(localStorage.getItem("ftth_queue") || "[]"); } catch { return []; }
       }
       function setQueue(q) {
@@ -509,6 +581,8 @@
           btnFollow.textContent = followOn ? "🧭" : "🧭";
           if (badge) badge.textContent = followOn ? "GPS: seguindo" : "GPS: livre";
         });
+
+        btnSync.addEventListener("click", () => syncQueue());
 
         btnReg.addEventListener("click", () => {
           if (selected?.type === "cto") openRegistro("MOVIMENTACOES", selected.props?.cto_id || "");
