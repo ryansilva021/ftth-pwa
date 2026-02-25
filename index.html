@@ -226,8 +226,9 @@
       }
 
       function wireToggles() {
-        elToggleCTOs?.addEventListener("change", () => setLayerVisible("ctos-layer", elToggleCTOs.checked));
-        elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
+        elToggleCTOs?.addEventListener("change", () => setLayerVisible("ctos-x", elToggleCTOs.checked));
+                  setLayerVisible("ctos-x-blink", (elToggleCTOs?.checked ?? true));
+elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
 
@@ -695,27 +696,98 @@ function getQueue() {
           try {
             // CTOs
             const ctos = await fetchJSON("/api/ctos");
+            // Ocupação: por padrão, contamos MOVIMENTACOES por CTO_ID (cada linha = 1 uso)
+            const movs = await fetchJSON("/api/movimentacoes");
+            const usedByCto = new Map();
+            for (const mv of movs) {
+              const id = (mv.cto_id || "").trim();
+              if (!id) continue;
+              usedByCto.set(id, (usedByCto.get(id) || 0) + 1);
+            }
+
             const ctosGeo = {
               type: "FeatureCollection",
-              features: ctos.map((cto) => ({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
-                properties: cto,
-              })),
+              features: ctos.map((cto) => {
+                const cap = Number(cto.capacidade || 0) || 0;
+                const used = usedByCto.get((cto.cto_id || "").trim()) || 0;
+                const pct = cap > 0 ? used / cap : 0;
+                return ({
+                  type: "Feature",
+                  geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
+                  properties: { ...cto, used, pct, cap }
+                });
+              }),
             };
+
             map.addSource("ctos", { type: "geojson", data: ctosGeo });
+
+            // Layer principal: "X" com cor por ocupação
             map.addLayer({
-              id: "ctos-layer",
-              type: "circle",
+              id: "ctos-x",
+              type: "symbol",
               source: "ctos",
-              paint: {
-                "circle-radius": 7,
-                "circle-color": "#22c55e",
-                "circle-stroke-width": 1,
-                "circle-stroke-color": "#000",
+              layout: {
+                "text-field": "✕",
+                "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+                "text-size": 18,
+                "text-allow-overlap": true,
+                "text-ignore-placement": true
               },
+              paint: {
+                // verde < 70%, amarelo >=70% e <100%, vermelho >=100%
+                "text-color": [
+                  "case",
+                  [">=", ["get", "pct"], 1], "#ef4444",
+                  [">=", ["get", "pct"], 0.7], "#f59e0b",
+                  "#22c55e"
+                ],
+                "text-halo-color": "rgba(0,0,0,0.85)",
+                "text-halo-width": 2,
+                "text-opacity": 1
+              }
             });
-            setLayerVisible("ctos-layer", elToggleCTOs?.checked ?? true);
+
+            // Layer de piscar: só CTO cheia (pct>=1)
+            map.addLayer({
+              id: "ctos-x-blink",
+              type: "symbol",
+              source: "ctos",
+              filter: [">=", ["get", "pct"], 1],
+              layout: {
+                "text-field": "✕",
+                "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+                "text-size": 20,
+                "text-allow-overlap": true,
+                "text-ignore-placement": true
+              },
+              paint: {
+                "text-color": "#ef4444",
+                "text-halo-color": "rgba(0,0,0,0.95)",
+                "text-halo-width": 3,
+                "text-opacity": 1
+              }
+            });
+
+            // animação piscar (opacidade)
+            let blinkOn = true;
+            setInterval(() => {
+              try {
+                blinkOn = !blinkOn;
+                map.setPaintProperty("ctos-x-blink", "text-opacity", blinkOn ? 1 : 0.2);
+              } catch (_) {}
+            }, 650);
+
+            // Click: selecionar CTO
+            map.on("click", "ctos-x", (e) => {
+              const f = e.features?.[0];
+              if (!f) return;
+              selected = { type: "cto", props: f.properties };
+              showSelectedSheet();
+            });
+
+            setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
+                      setLayerVisible("ctos-x-blink", (elToggleCTOs?.checked ?? true));
+setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
 
             // Caixas
             const caixas = await fetchJSON("/api/caixas_emenda_cdo");
