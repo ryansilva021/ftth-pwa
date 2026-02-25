@@ -2,13 +2,13 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>FTTH-PWA Mapa</title>
 
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-2026-02-25-MAP-STYLES";
-    window.PROJECT_CENTER = [-43.166, -22.412];
+    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO";
+    window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
   </script>
 
@@ -16,22 +16,109 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
   <style>
-    body{margin:0;font-family:Arial,sans-serif;background:#0b1220;color:#fff}
-    header{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;background:#111a2e}
+    :root{
+      --bg:#0b1220;
+      --panel:#111a2e;
+      --muted:#9ca3af;
+      --border:#1f2a44;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --blue:#3b82f6;
+      --purple:#a855f7;
+      --orange:#f97316;
+      --radius:16px;
+      --safe-top: env(safe-area-inset-top);
+      --safe-bottom: env(safe-area-inset-bottom);
+    }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:#fff}
+    header{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:10px 12px calc(10px + var(--safe-top));
+      background:var(--panel); position:sticky; top:0; z-index:5;
+    }
     .left{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .badge{font-size:12px;color:#9ca3af}
-    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .chip{display:flex;gap:6px;align-items:center;font-size:12px;color:#cbd5e1;background:#0b1220;border:1px solid #1f2a44;border-radius:999px;padding:6px 10px}
-    .chip input{accent-color:#22c55e}
-    #map{width:100vw;height:calc(100vh - 56px)}
+    .badge{font-size:12px;color:var(--muted);max-width:65vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .chip{
+      display:flex;gap:6px;align-items:center;
+      font-size:12px;color:#cbd5e1;background:var(--bg);
+      border:1px solid var(--border);border-radius:999px;padding:8px 12px;
+      min-height:40px;
+    }
+    .chip input{transform:scale(1.2); accent-color: var(--ok);}
+    #map{width:100vw;height:calc(100vh - 64px);}
+
+    /* Floating buttons (mobile-first) */
+    .fabCol{
+      position:fixed; right:14px; bottom:calc(14px + var(--safe-bottom)); z-index:6;
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .fab{
+      width:52px;height:52px;border-radius:999px;border:1px solid rgba(255,255,255,.12);
+      background:rgba(17,26,46,.92); color:#fff; display:flex; align-items:center; justify-content:center;
+      box-shadow: 0 10px 25px rgba(0,0,0,.35);
+      backdrop-filter: blur(6px);
+      -webkit-tap-highlight-color: transparent;
+      user-select:none;
+      font-size:20px;
+    }
+    .fab:active{transform:scale(0.98)}
+    .fabSmall{width:44px;height:44px;font-size:18px}
+
+    /* Bottom sheet */
+    .sheetBackdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.45);
+      z-index:10; display:none;
+    }
+    .sheet{
+      position:fixed; left:0; right:0; bottom:0;
+      z-index:11; display:none;
+      background:rgba(17,26,46,.98); border-top:1px solid rgba(255,255,255,.10);
+      border-radius: 20px 20px 0 0;
+      padding:12px 12px calc(12px + var(--safe-bottom));
+      max-height:78vh; overflow:auto;
+    }
+    .sheetHandle{width:44px;height:5px;border-radius:99px;background:rgba(255,255,255,.25);margin:6px auto 10px}
+    .sheetTitle{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .sheetTitle h3{margin:0;font-size:16px}
+    .sheetTitle .x{font-size:22px;line-height:1; padding:6px 10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.15)}
+    .kv{font-size:12px;color:var(--muted);margin:6px 0 12px}
+    .btnRow{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      padding:12px 14px; border-radius:14px; border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.15); color:#fff; font-weight:700; min-height:44px;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btnPrimary{background:var(--ok); color:#001b09; border:none;}
+    .btnWarn{background:var(--warn); color:#1b1200; border:none;}
+    .btnBlue{background:var(--blue); color:#00112a; border:none;}
+    .btn:active{transform:scale(0.99)}
+    .field{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+    .field label{font-size:12px;color:#cbd5e1}
+    .field input,.field select,.field textarea{
+      border-radius:14px; border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.22); color:#fff; padding:12px 12px;
+      font-size:15px; outline:none;
+    }
+    .field textarea{min-height:84px; resize:vertical}
+    .hint{font-size:12px;color:var(--muted);margin-top:6px}
     a{color:#93c5fd}
+
+    /* MapLibre popup readability on mobile */
+    .maplibregl-popup-content{
+      border-radius:14px !important;
+      padding:12px 12px !important;
+      font-size:14px !important;
+      line-height:1.35 !important;
+      max-width: 80vw !important;
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="left">
-      <div><b>🗺️ FTTH Mapa</b></div>
-      <div class="badge" id="badge">modo sem login</div>
+      <div><b>🗺️ FTTH</b></div>
+      <div class="badge" id="badge">mobile</div>
       <div class="controls">
         <label class="chip"><input id="toggleCTOs" type="checkbox" checked /> CTOs</label>
         <label class="chip"><input id="toggleCaixas" type="checkbox" checked /> Caixas</label>
@@ -42,6 +129,25 @@
 
   <div id="map"></div>
 
+  <!-- Floating actions -->
+  <div class="fabCol" aria-label="Ações">
+    <div class="fab" id="btnGPS" title="Minha localização">📍</div>
+    <div class="fab fabSmall" id="btnFollow" title="Seguir GPS (liga/desliga)">🧭</div>
+    <div class="fab fabSmall" id="btnReg" title="Registrar (último selecionado)">✍️</div>
+  </div>
+
+  <!-- Bottom sheet + backdrop -->
+  <div class="sheetBackdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet">
+    <div class="sheetHandle"></div>
+    <div class="sheetTitle">
+      <h3 id="sheetHeading">Detalhes</h3>
+      <div class="x" id="sheetClose" role="button" aria-label="Fechar">✕</div>
+    </div>
+    <div class="kv" id="sheetSub"></div>
+    <div id="sheetBody"></div>
+  </div>
+
   <script>
     window.addEventListener("DOMContentLoaded", () => {
       const badge = document.getElementById("badge");
@@ -51,8 +157,318 @@
       const elToggleCaixas = document.getElementById("toggleCaixas");
       const elToggleRotas = document.getElementById("toggleRotas");
 
+      const btnGPS = document.getElementById("btnGPS");
+      const btnFollow = document.getElementById("btnFollow");
+      const btnReg = document.getElementById("btnReg");
+
+      const sheet = document.getElementById("sheet");
+      const sheetBackdrop = document.getElementById("sheetBackdrop");
+      const sheetClose = document.getElementById("sheetClose");
+      const sheetHeading = document.getElementById("sheetHeading");
+      const sheetSub = document.getElementById("sheetSub");
+      const sheetBody = document.getElementById("sheetBody");
+
+      // Estado
+      let selected = null; // {type:'cto'|'caixa'|'rota', props, lngLat}
+      let map = null;
+
+      // GPS
+      let watchId = null;
+      let followOn = false;
+      let userMarker = null;
+
+      function openSheet(title, subtitle, bodyHTML) {
+        sheetHeading.textContent = title || "Detalhes";
+        sheetSub.innerHTML = subtitle || "";
+        sheetBody.innerHTML = bodyHTML || "";
+        sheetBackdrop.style.display = "block";
+        sheet.style.display = "block";
+      }
+      function closeSheet() {
+        sheetBackdrop.style.display = "none";
+        sheet.style.display = "none";
+      }
+      sheetBackdrop.addEventListener("click", closeSheet);
+      sheetClose.addEventListener("click", closeSheet);
+
+      function setLayerVisible(layerId, visible) {
+        if (!map?.getLayer(layerId)) return;
+        map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+      }
+
+      function wireToggles() {
+        elToggleCTOs?.addEventListener("change", () => setLayerVisible("ctos-layer", elToggleCTOs.checked));
+        elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
+        elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
+      }
+
+      async function fetchJSON(path) {
+        const res = await fetch(`${window.WORKER_URL}${path}`);
+        if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+        return await res.json();
+      }
+
+      function openExternalNav(lng, lat, label) {
+        const ll = `${lat},${lng}`;
+        const q = encodeURIComponent(label || "Destino");
+        // iOS: Apple Maps works well; Android: Google Maps. We can offer both, default by platform.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        const apple = `https://maps.apple.com/?daddr=${encodeURIComponent(ll)}&q=${q}`;
+        const google = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ll)}&destination_place_id=&travelmode=driving`;
+
+        // Open best first; also show alternative in sheet
+        window.open(isIOS ? apple : google, "_blank", "noopener");
+      }
+
+      function showSelectedSheet() {
+        if (!selected) {
+          openSheet("Nenhuma seleção", "Toque em uma CTO/caixa/rota no mapa.", `<div class="hint">Dica: use 📍 para achar sua posição.</div>`);
+          return;
+        }
+
+        const { type, props, lngLat } = selected;
+
+        if (type === "cto") {
+          const title = `CTO ${props.cto_id || ""}`;
+          const subtitle = `📌 ${props.bairro || ""} • ${props.rua || ""}`;
+          const body = `
+            <div class="btnRow">
+              <button class="btn btnBlue" id="goNav">🧭 Navegar</button>
+              <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
+            </div>
+            <div class="hint">Capacidade: <b>${props.capacidade ?? ""}</b></div>
+          `;
+          openSheet(title, subtitle, body);
+          document.getElementById("goNav").onclick = () => openExternalNav(lngLat.lng, lngLat.lat, title);
+          document.getElementById("goReg").onclick = () => openRegistro("MOVIMENTACOES", props.cto_id || "");
+          return;
+        }
+
+        if (type === "caixa") {
+          const title = `${props.tipo || "Caixa"} ${props.id || ""}`;
+          const subtitle = props.obs ? `📝 ${escapeHTML(props.obs)}` : `📌 ${props.dt_criacao || ""}`;
+          const img = props.img_url ? `<a href="${props.img_url}" target="_blank" rel="noopener">Ver imagem</a>` : "";
+          const body = `
+            <div class="btnRow">
+              <button class="btn btnBlue" id="goNav">🧭 Navegar</button>
+              <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
+            </div>
+            <div class="hint">${img}</div>
+            <div class="hint">Criado: ${props.dt_criacao || ""}<br>Atualizado: ${props.dt_atualizacao || ""}</div>
+          `;
+          openSheet(title, subtitle, body);
+          document.getElementById("goNav").onclick = () => openExternalNav(lngLat.lng, lngLat.lat, title);
+          document.getElementById("goReg").onclick = () => openRegistro("LOG_EVENTOS", `${props.tipo || "CAIXA"}:${props.id || ""}`);
+          return;
+        }
+
+        if (type === "rota") {
+          const title = `Rota ${props.rota_id || ""}`;
+          const subtitle = `Pontos: ${props.pontos || ""} • Tipos: ${escapeHTML(String(props.tipos || ""))}`;
+          const body = `
+            <div class="btnRow">
+              <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
+            </div>
+            <div class="hint">Peso médio: ${props.peso_medio || ""}</div>
+          `;
+          openSheet(title, subtitle, body);
+          document.getElementById("goReg").onclick = () => openRegistro("LOG_EVENTOS", `ROTA:${props.rota_id || ""}`);
+        }
+      }
+
+      function escapeHTML(s) {
+        return String(s ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      // Registro (offline-first): salva em localStorage (fila) e mostra export
+      function getQueue() {
+        try { return JSON.parse(localStorage.getItem("ftth_queue") || "[]"); } catch { return []; }
+      }
+      function setQueue(q) {
+        localStorage.setItem("ftth_queue", JSON.stringify(q));
+      }
+
+      function openRegistro(kind, refId) {
+        // kind: "MOVIMENTACOES" | "LOG_EVENTOS"
+        const qlen = getQueue().length;
+
+        const title = kind === "MOVIMENTACOES" ? "Registrar movimentação" : "Registrar evento";
+        const subtitle = `📌 Referência: <b>${escapeHTML(refId || "")}</b> • Pendentes: <b>${qlen}</b>`;
+
+        const body = `
+          <div class="field">
+            <label>Usuário</label>
+            <input id="f_user" placeholder="ex: ryan" />
+            <div class="hint">Dica: fica salvo no aparelho.</div>
+          </div>
+
+          ${kind === "MOVIMENTACOES" ? `
+          <div class="field">
+            <label>CTO_ID</label>
+            <input id="f_cto" value="${escapeHTML(refId || "")}" placeholder="CTO_ID" />
+          </div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="f_tipo">
+              <option value="ATIVACAO">ATIVACAO</option>
+              <option value="MANUTENCAO">MANUTENCAO</option>
+              <option value="DESATIVACAO">DESATIVACAO</option>
+              <option value="OUTRO">OUTRO</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Cliente</label>
+            <input id="f_cliente" placeholder="Nome/ID do cliente" />
+          </div>
+          <div class="field">
+            <label>Observação</label>
+            <textarea id="f_obs" placeholder="Detalhes do serviço..."></textarea>
+          </div>
+          ` : `
+          <div class="field">
+            <label>Ação</label>
+            <select id="f_action">
+              <option value="CREATE">CREATE</option>
+              <option value="UPDATE">UPDATE</option>
+              <option value="DELETE">DELETE</option>
+              <option value="NOTE">NOTE</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Entidade</label>
+            <input id="f_entity" value="${escapeHTML(refId || "")}" placeholder="ex: CAIXA:123" />
+          </div>
+          <div class="field">
+            <label>Detalhes</label>
+            <textarea id="f_details" placeholder="O que aconteceu..."></textarea>
+          </div>
+          `}
+
+          <div class="btnRow">
+            <button class="btn btnPrimary" id="btnSave">💾 Salvar no aparelho</button>
+            <button class="btn btnWarn" id="btnExport">⬇️ Exportar pendentes</button>
+          </div>
+
+          <div class="hint">
+            Sem login: por enquanto o registro fica <b>offline</b> no aparelho (fila).<br>
+            No próximo passo a gente liga um endpoint de escrita (Worker → Sheets) e envia tudo automaticamente.
+          </div>
+        `;
+
+        openSheet(title, subtitle, body);
+
+        // Prefill user remembered
+        const savedUser = localStorage.getItem("ftth_user") || "";
+        const elUser = document.getElementById("f_user");
+        if (elUser) elUser.value = savedUser;
+
+        document.getElementById("btnSave").onclick = () => {
+          const user = (document.getElementById("f_user").value || "").trim();
+          if (user) localStorage.setItem("ftth_user", user);
+
+          const now = new Date().toISOString();
+          const item = { kind, ts: now, user, ref: refId || "", gps: lastGPS(), payload: {} };
+
+          if (kind === "MOVIMENTACOES") {
+            item.payload = {
+              DATA: now,
+              CTO_ID: (document.getElementById("f_cto").value || "").trim(),
+              Tipo: document.getElementById("f_tipo").value || "",
+              Cliente: (document.getElementById("f_cliente").value || "").trim(),
+              Usuario: user,
+              Observacao: (document.getElementById("f_obs").value || "").trim(),
+            };
+          } else {
+            item.payload = {
+              TS: now,
+              USER: user,
+              ROLE: "", // pode ser preenchido depois
+              ACTION: document.getElementById("f_action").value || "",
+              ENTITY: (document.getElementById("f_entity").value || "").trim(),
+              ENTITY_ID: (document.getElementById("f_entity").value || "").trim(),
+              DETAILS: (document.getElementById("f_details").value || "").trim(),
+            };
+          }
+
+          const q = getQueue();
+          q.push(item);
+          setQueue(q);
+          if (badge) badge.textContent = `✔ Registro salvo • Pendentes: ${q.length}`;
+          showSelectedSheet(); // volta pro detalhe
+        };
+
+        document.getElementById("btnExport").onclick = () => {
+          const q = getQueue();
+          const blob = new Blob([JSON.stringify(q, null, 2)], { type: "application/json" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `ftth_pendentes_${new Date().toISOString().replaceAll(":","-")}.json`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+      }
+
+      function lastGPS() {
+        // store last known gps to attach in records
+        try {
+          const s = localStorage.getItem("ftth_last_gps");
+          return s ? JSON.parse(s) : null;
+        } catch { return null; }
+      }
+
+      function setLastGPS(lng, lat, acc) {
+        localStorage.setItem("ftth_last_gps", JSON.stringify({ lng, lat, acc, ts: new Date().toISOString() }));
+      }
+
+      function startGPS() {
+        if (!navigator.geolocation) {
+          if (badge) badge.textContent = "ERRO: geolocalização não suportada";
+          return;
+        }
+        if (watchId != null) return;
+
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const lng = pos.coords.longitude;
+            const lat = pos.coords.latitude;
+            const acc = pos.coords.accuracy;
+
+            setLastGPS(lng, lat, acc);
+
+            if (!userMarker) {
+              userMarker = new maplibregl.Marker({ color: "#3b82f6" })
+                .setLngLat([lng, lat])
+                .addTo(map);
+            } else {
+              userMarker.setLngLat([lng, lat]);
+            }
+
+            if (followOn) {
+              map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+            }
+          },
+          (err) => {
+            if (badge) badge.textContent = `GPS: ${err.message}`;
+          },
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }
+        );
+      }
+
+      function stopGPS() {
+        if (watchId != null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+      }
+
       function initMap() {
-        const map = new maplibregl.Map({
+        map = new maplibregl.Map({
           container: "map",
           style: {
             version: 8,
@@ -75,115 +491,145 @@
           attributionControl: true,
         });
 
-        map.addControl(new maplibregl.NavigationControl(), "top-right");
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
-        function setLayerVisible(layerId, visible) {
-          if (!map.getLayer(layerId)) return;
-          map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
-        }
+        wireToggles();
 
-        function wireToggles() {
-          elToggleCTOs?.addEventListener("change", () => setLayerVisible("ctos-layer", elToggleCTOs.checked));
-          elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
-          elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
-        }
+        btnGPS.addEventListener("click", () => {
+          startGPS();
+          const gps = lastGPS();
+          if (gps) map.easeTo({ center: [gps.lng, gps.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+          else if (badge) badge.textContent = "GPS: permitindo/aguardando...";
+        });
 
-        async function fetchJSON(path) {
-          const res = await fetch(`${window.WORKER_URL}${path}`);
-          if (!res.ok) throw new Error(`${path} -> ${res.status}`);
-          return await res.json();
-        }
+        btnFollow.addEventListener("click", () => {
+          followOn = !followOn;
+          startGPS();
+          btnFollow.style.background = followOn ? "rgba(34,197,94,.95)" : "rgba(17,26,46,.92)";
+          btnFollow.textContent = followOn ? "🧭" : "🧭";
+          if (badge) badge.textContent = followOn ? "GPS: seguindo" : "GPS: livre";
+        });
 
-        async function loadCTOs() {
-          const ctos = await fetchJSON("/api/ctos");
-          const geojson = {
-            type: "FeatureCollection",
-            features: ctos.map(cto => ({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
-              properties: cto
-            }))
-          };
-
-          map.addSource("ctos", { type: "geojson", data: geojson });
-          map.addLayer({
-            id: "ctos-layer",
-            type: "circle",
-            source: "ctos",
-            paint: {
-              "circle-radius": 6,
-              "circle-color": "#22c55e",
-              "circle-stroke-width": 1,
-              "circle-stroke-color": "#000"
-            }
-          });
-        }
-
-        async function loadCaixas() {
-          const caixas = await fetchJSON("/api/caixas_emenda_cdo");
-          const geojson = {
-            type: "FeatureCollection",
-            features: caixas.map(cx => ({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [cx.lng, cx.lat] },
-              properties: cx
-            }))
-          };
-
-          map.addSource("caixas", { type: "geojson", data: geojson });
-          map.addLayer({
-            id: "caixas-layer",
-            type: "circle",
-            source: "caixas",
-            paint: {
-              "circle-radius": 6,
-              "circle-color": [
-                "match",
-                ["get","tipo"],
-                "CDO", "#a855f7",   // roxo
-                "CE", "#f97316",    // laranja
-                "#60a5fa"            // default azul
-              ],
-              "circle-stroke-width": 1,
-              "circle-stroke-color": "#000"
-            }
-          });
-        }
-
-        async function loadRotas() {
-          const geo = await fetchJSON("/api/rotas_fibras");
-
-          map.addSource("rotas", { type: "geojson", data: geo });
-          map.addLayer({
-            id: "rotas-layer",
-            type: "line",
-            source: "rotas",
-            layout: {
-              "line-join": "round",
-              "line-cap": "round"
-            },
-            paint: {
-              "line-color": [
-                "case",
-                ["in","BACKBONE",["get","tipos"]], "#3b82f6", // azul grosso
-                ["in","RAMAL",["get","tipos"]], "#000000",    // preto médio
-                ["in","DROP",["get","tipos"]], "#22c55e",     // verde fino
-                "#f59e0b" // fallback
-              ],
-              "line-width": [
-                "case",
-                ["in","BACKBONE",["get","tipos"]], 5,
-                ["in","RAMAL",["get","tipos"]], 3,
-                ["in","DROP",["get","tipos"]], 1.5,
-                2
-              ]
-            }
-          });
-        }
+        btnReg.addEventListener("click", () => {
+          if (selected?.type === "cto") openRegistro("MOVIMENTACOES", selected.props?.cto_id || "");
+          else if (selected) openRegistro("LOG_EVENTOS", (selected.props?.id ? `${selected.props.tipo}:${selected.props.id}` : (selected.props?.rota_id ? `ROTA:${selected.props.rota_id}` : "")));
+          else showSelectedSheet();
+        });
 
         map.on("load", async () => {
-          wireToggles();
-          await Promise.all([loadCTOs(), loadCaixas(), loadRotas()]);
+          try {
+            // CTOs
+            const ctos = await fetchJSON("/api/ctos");
+            const ctosGeo = {
+              type: "FeatureCollection",
+              features: ctos.map((cto) => ({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
+                properties: cto,
+              })),
+            };
+            map.addSource("ctos", { type: "geojson", data: ctosGeo });
+            map.addLayer({
+              id: "ctos-layer",
+              type: "circle",
+              source: "ctos",
+              paint: {
+                "circle-radius": 7,
+                "circle-color": "#22c55e",
+                "circle-stroke-width": 1,
+                "circle-stroke-color": "#000",
+              },
+            });
+            setLayerVisible("ctos-layer", elToggleCTOs?.checked ?? true);
+
+            // Caixas
+            const caixas = await fetchJSON("/api/caixas_emenda_cdo");
+            const caixasGeo = {
+              type: "FeatureCollection",
+              features: caixas.map((cx) => ({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [cx.lng, cx.lat] },
+                properties: cx,
+              })),
+            };
+            map.addSource("caixas", { type: "geojson", data: caixasGeo });
+            map.addLayer({
+              id: "caixas-layer",
+              type: "circle",
+              source: "caixas",
+              paint: {
+                "circle-radius": 7,
+                "circle-color": [
+                  "match",
+                  ["upcase", ["to-string", ["get","tipo"]]],
+                  "CDO", "#a855f7", // roxo
+                  "CE", "#f97316",  // laranja
+                  "#60a5fa",
+                ],
+                "circle-stroke-width": 1,
+                "circle-stroke-color": "#000",
+              },
+            });
+            setLayerVisible("caixas-layer", elToggleCaixas?.checked ?? true);
+
+            // Rotas (GeoJSON FeatureCollection)
+            const rotas = await fetchJSON("/api/rotas_fibras");
+            map.addSource("rotas", { type: "geojson", data: rotas });
+            map.addLayer({
+              id: "rotas-layer",
+              type: "line",
+              source: "rotas",
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": [
+                  "case",
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], "#3b82f6", // backbone azul
+                  ["in","RAMAL",["to-string",["get","tipos"]]], "#000000",    // ramal preto
+                  ["in","DROP",["to-string",["get","tipos"]]], "#22c55e",     // drop verde
+                  "#f59e0b" // rota padrão laranja
+                ],
+                "line-width": [
+                  "case",
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], 6,
+                  ["in","RAMAL",["to-string",["get","tipos"]]], 3.5,
+                  ["in","DROP",["to-string",["get","tipos"]]], 2,
+                  3
+                ],
+                "line-opacity": 0.92
+              },
+            });
+            setLayerVisible("rotas-layer", elToggleRotas?.checked ?? true);
+
+            // Interações: toque seleciona e abre sheet (mobile-first)
+            map.on("click", "ctos-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "cto", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+            map.on("click", "caixas-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "caixa", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+            map.on("click", "rotas-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "rota", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+
+            // Cursor desktop (não atrapalha mobile)
+            map.on("mouseenter", "ctos-layer", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "ctos-layer", () => (map.getCanvas().style.cursor = ""));
+            map.on("mouseenter", "caixas-layer", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "caixas-layer", () => (map.getCanvas().style.cursor = ""));
+            map.on("mouseenter", "rotas-layer", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "rotas-layer", () => (map.getCanvas().style.cursor = ""));
+
+            if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__} • OK`;
+          } catch (err) {
+            console.error(err);
+            if (badge) badge.textContent = `ERRO: ${String(err?.message ?? err)}`;
+          }
         });
 
         return map;
