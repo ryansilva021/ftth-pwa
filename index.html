@@ -7,7 +7,9 @@
 
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO";
+    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP2";
+    // Step 2: chave embutida (troque aqui e no Worker/Apps Script)
+    window.SUBMIT_KEY = "REPLACE_WITH_A_LONG_RANDOM_STRING";
     window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
   </script>
@@ -291,6 +293,10 @@
       // Registro (offline-first): salva em localStorage (fila) e mostra export
       
       async function ensureSubmitKey() {
+        // Step 2: use key embedded in config (no prompt)
+        const embedded = (window.SUBMIT_KEY || "").trim();
+        if (embedded && embedded !== "REPLACE_WITH_A_LONG_RANDOM_STRING") return embedded;
+
         let k = localStorage.getItem("ftth_submit_key") || "";
         if (!k) {
           k = prompt("Chave de sincronização (SUBMIT_KEY):") || "";
