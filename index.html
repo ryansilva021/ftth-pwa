@@ -848,7 +848,7 @@ setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
             setLayerVisible("rotas-layer", elToggleRotas?.checked ?? true);
 
             // Interações: toque seleciona e abre sheet (mobile-first)
-            map.on("click", "ctos-layer", (e) => {
+            map.on("click", "ctos-x", (e) => {
               const props = e.features?.[0]?.properties || {};
               selected = { type: "cto", props, lngLat: e.lngLat };
               showSelectedSheet();
@@ -865,8 +865,8 @@ setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
             });
 
             // Cursor desktop (não atrapalha mobile)
-            map.on("mouseenter", "ctos-layer", () => (map.getCanvas().style.cursor = "pointer"));
-            map.on("mouseleave", "ctos-layer", () => (map.getCanvas().style.cursor = ""));
+            map.on("mouseenter", "ctos-x", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "ctos-x", () => (map.getCanvas().style.cursor = ""));
             map.on("mouseenter", "caixas-layer", () => (map.getCanvas().style.cursor = "pointer"));
             map.on("mouseleave", "caixas-layer", () => (map.getCanvas().style.cursor = ""));
             map.on("mouseenter", "rotas-layer", () => (map.getCanvas().style.cursor = "pointer"));
