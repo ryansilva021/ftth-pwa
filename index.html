@@ -8,7 +8,6 @@
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
     window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
-    // Step 3: chave embutida (troque aqui e no Worker/Apps Script)
     window.SUBMIT_KEY = "1Qaz2wsX3edc";
     window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
@@ -190,6 +189,30 @@
         sheetBackdrop.style.display = "block";
         sheet.style.display = "block";
       }
+
+      function showPopup(title, message) {
+        openSheet(title || "Aviso", message || "", `
+          <div class="btnRow">
+            <button class="btn btnPrimary" id="btnOk">OK</button>
+          </div>
+        `);
+        const ok = document.getElementById("btnOk");
+        if (ok) ok.onclick = closeSheet;
+      }
+
+      let offlinePopupShown = false;
+      function onBecameOffline() {
+        if (offlinePopupShown) return;
+        offlinePopupShown = true;
+        if (badge) badge.textContent = "🔴 Offline (registros serão salvos no aparelho)";
+        showPopup("Sem internet", "Você está offline. Pode continuar registrando — os registros ficam salvos no aparelho e serão sincronizados quando a internet voltar.");
+      }
+      function onBecameOnline() {
+        offlinePopupShown = false;
+        if (badge) badge.textContent = "🟢 Online — sincronizando...";
+        syncQueue({ silentIfEmpty: true, showPopups: false });
+      }
+
       function closeSheet() {
         sheetBackdrop.style.display = "none";
         sheet.style.display = "none";
@@ -294,37 +317,7 @@
 
       // Registro (offline-first): salva em localStorage (fila) e mostra export
       
-      
-      function showPopup(title, message, buttonsHTML) {
-        openSheet(title || "Aviso", message || "", `
-          <div class="btnRow">
-            ${buttonsHTML || '<button class="btn btnPrimary" id="btnOk">OK</button>'}
-          </div>
-        `);
-        const ok = document.getElementById("btnOk");
-        if (ok) ok.onclick = closeSheet;
-      }
-
-      let offlinePopupShown = false;
-
-      function onBecameOffline() {
-        if (offlinePopupShown) return;
-        offlinePopupShown = true;
-        if (badge) badge.textContent = "🔴 Offline (registros serão salvos no aparelho)";
-        showPopup(
-          "Sem internet",
-          "Você está offline. Pode continuar registrando normalmente — os registros ficam salvos no aparelho e serão sincronizados quando a internet voltar.",
-          '<button class="btn btnPrimary" id="btnOk">Entendi</button>'
-        );
-      }
-
-      function onBecameOnline() {
-        offlinePopupShown = false;
-        if (badge) badge.textContent = "🟢 Online — sincronizando...";
-        syncQueue({ silentIfEmpty: true, showPopups: true });
-      }
-
-async function ensureSubmitKey() {
+      async function ensureSubmitKey() {
         const embedded = (window.SUBMIT_KEY || "").trim();
         if (embedded) return embedded;
 
@@ -334,8 +327,6 @@ async function ensureSubmitKey() {
           k = k.trim();
           if (k) localStorage.setItem("ftth_submit_key", k);
         }
-        return k;
-      }
         return k;
       }
 
@@ -374,10 +365,7 @@ async function ensureSubmitKey() {
           try {
             const res = await fetch(`${window.WORKER_URL}/api/submit`, {
               method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "x-ftth-key": key
-              },
+              headers: { "content-type": "application/json", "x-ftth-key": key },
               body: JSON.stringify({ items: [item] })
             });
 
@@ -385,11 +373,7 @@ async function ensureSubmitKey() {
             let data = null;
             try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
 
-            if (!res.ok || data?.ok === false) {
-              const err = data?.error || `HTTP ${res.status}`;
-              throw new Error(err);
-            }
-
+            if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
             sent++;
           } catch (err) {
             failed++;
@@ -404,69 +388,7 @@ async function ensureSubmitKey() {
           if (showPopups) showPopup("Sincronizado", `Enviados: ${sent}.`);
         } else {
           if (badge) badge.textContent = `⚠️ Sync parcial • enviados: ${sent} • falhas: ${failed}`;
-          if (showPopups) {
-            showPopup(
-              "Sincronização parcial",
-              `Enviados: ${sent}. Falharam: ${failed}. Os itens com falha continuam pendentes.`,
-              '<button class="btn btnWarn" id="tryAgain">Tentar novamente</button><button class="btn" id="viewPend">Ver pendentes</button>'
-            );
-            const ta = document.getElementById("tryAgain");
-            if (ta) ta.onclick = () => { closeSheet(); syncQueue({ silentIfEmpty: true, showPopups: true }); };
-            const vp = document.getElementById("viewPend");
-            if (vp) vp.onclick = () => { closeSheet(); openPendentes(); };
-          }
-        }
-      }
-
-        const key = await ensureSubmitKey();
-        if (!key) {
-          if (badge) badge.textContent = "Sync cancelado (sem chave)";
-          return;
-        }
-
-        try {
-          if (badge) badge.textContent = `Sincronizando ${q.length}...`;
-          const res = await fetch(`${window.WORKER_URL}/api/submit`, {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-ftth-key": key
-            },
-            body: JSON.stringify({ items: q })
-          });
-
-          const txt = await res.text();
-          let data = null;
-          try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
-
-          if (!res.ok || data?.ok === false) {
-            throw new Error(data?.error || `HTTP ${res.status}`);
-          }
-
-          // Success: clear queue
-          setQueue([]);
-          if (badge) badge.textContent = `✅ Sync OK • enviados: ${data.accepted ?? q.length}`;
-          openSheet("Sincronizado", `Enviados: <b>${data.accepted ?? q.length}</b> • Rejeitados: <b>${data.rejected ?? 0}</b>`,
-            `<div class="btnRow">
-              <button class="btn btnPrimary" id="okClose">OK</button>
-             </div>
-             <div class="hint">As linhas foram gravadas no Google Sheets via Apps Script.</div>`);
-          document.getElementById("okClose").onclick = closeSheet;
-        } catch (err) {
-          console.error(err);
-          if (badge) badge.textContent = `❌ Sync falhou: ${String(err?.message ?? err)}`;
-          openSheet("Falha na sincronização", `${String(err?.message ?? err)}`,
-            `<div class="hint">Verifique se o Worker tem APPS_SCRIPT_URL e SUBMIT_KEY configurados e se a chave no celular está correta.</div>
-             <div class="btnRow">
-               <button class="btn btnWarn" id="tryAgain">Tentar novamente</button>
-               <button class="btn" id="changeKey">Trocar chave</button>
-             </div>`);
-          document.getElementById("tryAgain").onclick = () => { closeSheet(); syncQueue(); };
-          document.getElementById("changeKey").onclick = () => {
-            localStorage.removeItem("ftth_submit_key");
-            closeSheet();
-            syncQueue();
-          };
+          if (showPopups) showPopup("Sincronização parcial", `Enviados: ${sent}. Falharam: ${failed}. Os itens com falha continuam pendentes.`);
         }
       }
 
@@ -878,10 +800,7 @@ function getQueue() {
       window.addEventListener("offline", onBecameOffline);
       window.addEventListener("online", onBecameOnline);
       if (!navigator.onLine) onBecameOffline();
-
-      setInterval(() => {
-        if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false });
-      }, 45000);
+      setInterval(() => { if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false }); }, 45000);
 
       initMap();
     });
