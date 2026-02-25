@@ -559,7 +559,20 @@ function getQueue() {
           q.push(item);
           setQueue(q);
           if (badge) badge.textContent = `✔ Registro salvo • Pendentes: ${q.length}`;
-          showSelectedSheet(); // volta pro detalhe
+
+          if (kind === "MOVIMENTACOES") {
+            const cto = item.payload.CTO_ID || "";
+            const cliente = item.payload.Cliente || "";
+            showPopup(
+              "✅ Cadastrado com sucesso",
+              `Cliente <b>${escapeHTML(cliente || "-")}</b> cadastrado na CTO <b>${escapeHTML(cto || "-")}</b>.`,
+              '<button class="btn btnPrimary" id="btnOk">OK</button>'
+            );
+            const ok = document.getElementById("btnOk");
+            if (ok) ok.onclick = () => { closeSheet(); showSelectedSheet(); };
+          } else {
+            showSelectedSheet(); // volta pro detalhe
+          }
         };
 
         document.getElementById("btnExport").onclick = () => {
