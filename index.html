@@ -6,26 +6,25 @@
   <title>FTTH-PWA Mapa</title>
 
   <script>
-    // Configurações do projeto (SEM LOGIN por enquanto)
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-2026-02-25-MAP-NOLOGIN";
-
-    // Atenção: MapLibre usa [lng, lat] no center
+    window.__BUILD_ID__ = "FTTH-2026-02-25-MAP-STYLES";
     window.PROJECT_CENTER = [-43.166, -22.412];
     window.PROJECT_ZOOM = 12;
   </script>
 
-  <!-- MapLibre -->
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
   <style>
     body{margin:0;font-family:Arial,sans-serif;background:#0b1220;color:#fff}
     header{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;background:#111a2e}
-    .left{display:flex;gap:10px;align-items:center}
+    .left{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .badge{font-size:12px;color:#9ca3af}
-    button{padding:8px 10px;border:none;border-radius:8px;background:#22c55e;color:#000;font-weight:700;cursor:pointer}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .chip{display:flex;gap:6px;align-items:center;font-size:12px;color:#cbd5e1;background:#0b1220;border:1px solid #1f2a44;border-radius:999px;padding:6px 10px}
+    .chip input{accent-color:#22c55e}
     #map{width:100vw;height:calc(100vh - 56px)}
+    a{color:#93c5fd}
   </style>
 </head>
 <body>
@@ -33,20 +32,24 @@
     <div class="left">
       <div><b>🗺️ FTTH Mapa</b></div>
       <div class="badge" id="badge">modo sem login</div>
-    </div>
-    <div class="right">
-      <!-- Placeholder (sem login por enquanto) -->
-      <button id="btnLogin" style="display:none;">Login</button>
+      <div class="controls">
+        <label class="chip"><input id="toggleCTOs" type="checkbox" checked /> CTOs</label>
+        <label class="chip"><input id="toggleCaixas" type="checkbox" checked /> Caixas</label>
+        <label class="chip"><input id="toggleRotas" type="checkbox" checked /> Rotas</label>
+      </div>
     </div>
   </header>
 
   <div id="map"></div>
 
   <script>
-    // Garante que tudo rode após o DOM existir (evita badge=null e tela branca)
     window.addEventListener("DOMContentLoaded", () => {
       const badge = document.getElementById("badge");
       if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__}`;
+
+      const elToggleCTOs = document.getElementById("toggleCTOs");
+      const elToggleCaixas = document.getElementById("toggleCaixas");
+      const elToggleRotas = document.getElementById("toggleRotas");
 
       function initMap() {
         const map = new maplibregl.Map({
@@ -74,66 +77,113 @@
 
         map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-        map.on("load", async () => {
-          try {
-            const res = await fetch(`${window.WORKER_URL}/api/ctos`);
-            if (!res.ok) throw new Error(`Worker respondeu ${res.status}`);
-            const ctos = await res.json();
+        function setLayerVisible(layerId, visible) {
+          if (!map.getLayer(layerId)) return;
+          map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+        }
 
-            console.log("CTOs carregadas:", ctos.length);
+        function wireToggles() {
+          elToggleCTOs?.addEventListener("change", () => setLayerVisible("ctos-layer", elToggleCTOs.checked));
+          elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
+          elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
+        }
 
-            const geojson = {
-              type: "FeatureCollection",
-              features: (ctos || []).map((cto) => ({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
-                properties: {
-                  cto_id: cto.cto_id ?? "",
-                  bairro: cto.bairro ?? "",
-                  rua: cto.rua ?? "",
-                  capacidade: cto.capacidade ?? "",
-                },
-              })),
-            };
+        async function fetchJSON(path) {
+          const res = await fetch(`${window.WORKER_URL}${path}`);
+          if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+          return await res.json();
+        }
 
-            // Evita duplicar source/layer em hot reload
-            if (map.getSource("ctos")) {
-              map.getSource("ctos").setData(geojson);
-            } else {
-              map.addSource("ctos", { type: "geojson", data: geojson });
+        async function loadCTOs() {
+          const ctos = await fetchJSON("/api/ctos");
+          const geojson = {
+            type: "FeatureCollection",
+            features: ctos.map(cto => ({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
+              properties: cto
+            }))
+          };
 
-              map.addLayer({
-                id: "ctos-layer",
-                type: "circle",
-                source: "ctos",
-                paint: {
-                  "circle-radius": 6,
-                  "circle-color": "#22c55e",
-                  "circle-stroke-width": 1,
-                  "circle-stroke-color": "#000",
-                },
-              });
-
-              map.on("click", "ctos-layer", (e) => {
-                const p = e.features?.[0]?.properties || {};
-                new maplibregl.Popup()
-                  .setLngLat(e.lngLat)
-                  .setHTML(
-                    `<b>${p.cto_id || ""}</b><br>
-                     Bairro: ${p.bairro || ""}<br>
-                     Rua: ${p.rua || ""}<br>
-                     Capacidade: ${p.capacidade || ""}`
-                  )
-                  .addTo(map);
-              });
-
-              map.on("mouseenter", "ctos-layer", () => (map.getCanvas().style.cursor = "pointer"));
-              map.on("mouseleave", "ctos-layer", () => (map.getCanvas().style.cursor = ""));
+          map.addSource("ctos", { type: "geojson", data: geojson });
+          map.addLayer({
+            id: "ctos-layer",
+            type: "circle",
+            source: "ctos",
+            paint: {
+              "circle-radius": 6,
+              "circle-color": "#22c55e",
+              "circle-stroke-width": 1,
+              "circle-stroke-color": "#000"
             }
-          } catch (err) {
-            console.error("Erro ao carregar CTOs:", err);
-            if (badge) badge.textContent = `ERRO: ${String(err?.message ?? err)}`;
-          }
+          });
+        }
+
+        async function loadCaixas() {
+          const caixas = await fetchJSON("/api/caixas_emenda_cdo");
+          const geojson = {
+            type: "FeatureCollection",
+            features: caixas.map(cx => ({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [cx.lng, cx.lat] },
+              properties: cx
+            }))
+          };
+
+          map.addSource("caixas", { type: "geojson", data: geojson });
+          map.addLayer({
+            id: "caixas-layer",
+            type: "circle",
+            source: "caixas",
+            paint: {
+              "circle-radius": 6,
+              "circle-color": [
+                "match",
+                ["get","tipo"],
+                "CDO", "#a855f7",   // roxo
+                "CE", "#f97316",    // laranja
+                "#60a5fa"            // default azul
+              ],
+              "circle-stroke-width": 1,
+              "circle-stroke-color": "#000"
+            }
+          });
+        }
+
+        async function loadRotas() {
+          const geo = await fetchJSON("/api/rotas_fibras");
+
+          map.addSource("rotas", { type: "geojson", data: geo });
+          map.addLayer({
+            id: "rotas-layer",
+            type: "line",
+            source: "rotas",
+            layout: {
+              "line-join": "round",
+              "line-cap": "round"
+            },
+            paint: {
+              "line-color": [
+                "case",
+                ["in","BACKBONE",["get","tipos"]], "#3b82f6", // azul grosso
+                ["in","RAMAL",["get","tipos"]], "#000000",    // preto médio
+                ["in","DROP",["get","tipos"]], "#22c55e",     // verde fino
+                "#f59e0b" // fallback
+              ],
+              "line-width": [
+                "case",
+                ["in","BACKBONE",["get","tipos"]], 5,
+                ["in","RAMAL",["get","tipos"]], 3,
+                ["in","DROP",["get","tipos"]], 1.5,
+                2
+              ]
+            }
+          });
+        }
+
+        map.on("load", async () => {
+          wireToggles();
+          await Promise.all([loadCTOs(), loadCaixas(), loadRotas()]);
         });
 
         return map;
