@@ -14,16 +14,11 @@
     };
 
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-22-MAP-D";
+    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-25-MAP-NOLOGIN";
 
-    // Centro/zoom padrão (ajuste como preferir)
-    window.PROJECT_CENTER = [-43.166, -22.412]; // exemplo (lon, lat)
+    window.PROJECT_CENTER = [-43.166, -22.412];
     window.PROJECT_ZOOM = 12;
   </script>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 
   <!-- MapLibre -->
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
@@ -36,49 +31,25 @@
     .badge{font-size:12px;color:#9ca3af}
     button{padding:8px 10px;border:none;border-radius:8px;background:#22c55e;color:#000;font-weight:700;cursor:pointer}
     #map{width:100vw;height:calc(100vh - 56px)}
-    .error{padding:12px;background:#1f2937;color:#fff}
-    pre{margin:0;white-space:pre-wrap}
   </style>
 </head>
 <body>
   <header>
     <div class="left">
       <div><b>🗺️ FTTH Mapa</b></div>
-      <div class="badge" id="badge">verificando acesso...</div>
+      <div class="badge" id="badge">modo sem login</div>
     </div>
     <div class="right">
-      <button id="btnLogout">Sair</button>
+      <!-- Mantido só como placeholder -->
+      <button id="btnLogin" style="display:none;">Login</button>
     </div>
   </header>
 
   <div id="map"></div>
 
   <script>
-    firebase.initializeApp(window.firebaseConfig);
-    const auth = firebase.auth();
-
     const badge = document.getElementById("badge");
-    const setBadge = (t) => badge.textContent = t;
-
-    function workerBase() {
-      return (window.WORKER_URL || "").replace(/\/$/, "");
-    }
-
-    async function requireAdmin() {
-      const user = auth.currentUser;
-      if (!user) throw new Error("not_logged_in");
-
-      const token = await user.getIdToken(true);
-      const url = workerBase() + "/me";
-
-      const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-      const data = await r.json().catch(() => null);
-
-      if (!data?.ok) throw new Error("me_failed");
-      if (data.admin !== true) throw new Error("not_admin");
-
-      return data;
-    }
+    badge.textContent = `BUILD: ${window.__BUILD_ID__}`;
 
     function initMap() {
       const map = new maplibregl.Map({
@@ -108,32 +79,8 @@
       return map;
     }
 
-    async function boot() {
-      try {
-        setBadge("validando login...");
-        const me = await requireAdmin();
-        setBadge(`admin: ${me.email || me.uid}`);
-
-        initMap();
-      } catch (e) {
-        // Se não tiver permissão, volta pro login
-        console.warn("Acesso negado:", e);
-        window.location.href = "/login.html";
-      }
-    }
-
-    document.getElementById("btnLogout").addEventListener("click", async () => {
-      await auth.signOut().catch(() => {});
-      window.location.href = "/login.html";
-    });
-
-    auth.onAuthStateChanged((user) => {
-      if (!user) {
-        window.location.href = "/login.html";
-        return;
-      }
-      boot();
-    });
+    // Boot direto (sem auth)
+    initMap();
   </script>
 </body>
 </html>
