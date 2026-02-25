@@ -7,8 +7,8 @@
 
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP2";
-    // Step 2: chave embutida (troque aqui e no Worker/Apps Script)
+    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
+    // Step 3: chave embutida (troque aqui e no Worker/Apps Script)
     window.SUBMIT_KEY = "1Qaz2wsX3edc";
     window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
@@ -135,6 +135,7 @@
   <div class="fabCol" aria-label="Ações">
     <div class="fab" id="btnGPS" title="Minha localização">📍</div>
     <div class="fab fabSmall" id="btnFollow" title="Seguir GPS (liga/desliga)">🧭</div>
+    <div class="fab fabSmall" id="btnPend" title="Pendentes">🧾</div>
     <div class="fab fabSmall" id="btnSync" title="Sincronizar pendentes">🔄</div>
     <div class="fab fabSmall" id="btnReg" title="Registrar (último selecionado)">✍️</div>
   </div>
@@ -162,6 +163,7 @@
 
       const btnGPS = document.getElementById("btnGPS");
       const btnFollow = document.getElementById("btnFollow");
+      const btnPend = document.getElementById("btnPend");
       const btnSync = document.getElementById("btnSync");
       const btnReg = document.getElementById("btnReg");
 
@@ -292,10 +294,39 @@
 
       // Registro (offline-first): salva em localStorage (fila) e mostra export
       
-      async function ensureSubmitKey() {
-        // Step 2: use key embedded in config (no prompt)
+      
+      function showPopup(title, message, buttonsHTML) {
+        openSheet(title || "Aviso", message || "", `
+          <div class="btnRow">
+            ${buttonsHTML || '<button class="btn btnPrimary" id="btnOk">OK</button>'}
+          </div>
+        `);
+        const ok = document.getElementById("btnOk");
+        if (ok) ok.onclick = closeSheet;
+      }
+
+      let offlinePopupShown = false;
+
+      function onBecameOffline() {
+        if (offlinePopupShown) return;
+        offlinePopupShown = true;
+        if (badge) badge.textContent = "🔴 Offline (registros serão salvos no aparelho)";
+        showPopup(
+          "Sem internet",
+          "Você está offline. Pode continuar registrando normalmente — os registros ficam salvos no aparelho e serão sincronizados quando a internet voltar.",
+          '<button class="btn btnPrimary" id="btnOk">Entendi</button>'
+        );
+      }
+
+      function onBecameOnline() {
+        offlinePopupShown = false;
+        if (badge) badge.textContent = "🟢 Online — sincronizando...";
+        syncQueue({ silentIfEmpty: true, showPopups: true });
+      }
+
+async function ensureSubmitKey() {
         const embedded = (window.SUBMIT_KEY || "").trim();
-        if (embedded && embedded !== "REPLACE_WITH_A_LONG_RANDOM_STRING") return embedded;
+        if (embedded) return embedded;
 
         let k = localStorage.getItem("ftth_submit_key") || "";
         if (!k) {
@@ -305,13 +336,87 @@
         }
         return k;
       }
+        return k;
+      }
 
-      async function syncQueue() {
+      async function syncQueue(opts = {}) {
+        const { silentIfEmpty = false, showPopups = false } = opts;
         const q = getQueue();
         if (!q.length) {
-          if (badge) badge.textContent = "Sem pendências para sincronizar";
+          if (!silentIfEmpty) {
+            if (badge) badge.textContent = "Sem pendências para sincronizar";
+            if (showPopups) showPopup("Sem pendências", "Não há registros pendentes para sincronizar.");
+          }
           return;
         }
+
+        if (!navigator.onLine) {
+          if (badge) badge.textContent = "🔴 Offline — pendências mantidas";
+          if (showPopups) onBecameOffline();
+          return;
+        }
+
+        const key = await ensureSubmitKey();
+        if (!key) {
+          if (badge) badge.textContent = "Sync cancelado (sem chave)";
+          if (showPopups) showPopup("Chave ausente", "SUBMIT_KEY não configurada no app.");
+          return;
+        }
+
+        let sent = 0;
+        let failed = 0;
+        const nextQueue = [];
+
+        if (badge) badge.textContent = `Sincronizando ${q.length}...`;
+
+        for (let i = 0; i < q.length; i++) {
+          const item = q[i];
+          try {
+            const res = await fetch(`${window.WORKER_URL}/api/submit`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-ftth-key": key
+              },
+              body: JSON.stringify({ items: [item] })
+            });
+
+            const txt = await res.text();
+            let data = null;
+            try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+
+            if (!res.ok || data?.ok === false) {
+              const err = data?.error || `HTTP ${res.status}`;
+              throw new Error(err);
+            }
+
+            sent++;
+          } catch (err) {
+            failed++;
+            nextQueue.push({ ...item, last_error: String(err?.message ?? err), last_error_at: new Date().toISOString() });
+          }
+        }
+
+        setQueue(nextQueue);
+
+        if (failed === 0) {
+          if (badge) badge.textContent = `✅ Sync OK • enviados: ${sent}`;
+          if (showPopups) showPopup("Sincronizado", `Enviados: ${sent}.`);
+        } else {
+          if (badge) badge.textContent = `⚠️ Sync parcial • enviados: ${sent} • falhas: ${failed}`;
+          if (showPopups) {
+            showPopup(
+              "Sincronização parcial",
+              `Enviados: ${sent}. Falharam: ${failed}. Os itens com falha continuam pendentes.`,
+              '<button class="btn btnWarn" id="tryAgain">Tentar novamente</button><button class="btn" id="viewPend">Ver pendentes</button>'
+            );
+            const ta = document.getElementById("tryAgain");
+            if (ta) ta.onclick = () => { closeSheet(); syncQueue({ silentIfEmpty: true, showPopups: true }); };
+            const vp = document.getElementById("viewPend");
+            if (vp) vp.onclick = () => { closeSheet(); openPendentes(); };
+          }
+        }
+      }
 
         const key = await ensureSubmitKey();
         if (!key) {
@@ -371,6 +476,60 @@ function getQueue() {
       function setQueue(q) {
         localStorage.setItem("ftth_queue", JSON.stringify(q));
       }
+
+      function openPendentes() {
+        const q = getQueue();
+        const title = `Pendentes (${q.length})`;
+        if (!q.length) {
+          showPopup(title, "Nenhum registro pendente.");
+          return;
+        }
+
+        const rows = q.slice().reverse().map((it) => {
+          const kind = (it.kind || "").toUpperCase();
+          const ts = (it.ts || "").replace("T", " ").slice(0, 19);
+          const ref = it.ref || (it.payload && (it.payload.CTO_ID || it.payload.ENTITY_ID)) || "";
+          const err = it.last_error ? `<div class="hint">❌ ${escapeHTML(it.last_error)}</div>` : "";
+          return `
+            <div style="border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px;margin:8px 0;">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <div><b>${escapeHTML(kind || "ITEM")}</b> <span class="badge">${escapeHTML(ref)}</span></div>
+                <div class="badge">${escapeHTML(ts)}</div>
+              </div>
+              ${err}
+            </div>
+          `;
+        }).join("");
+
+        openSheet(
+          title,
+          "Registros salvos no aparelho. Use 🔄 para sincronizar.",
+          `
+            <div class="btnRow">
+              <button class="btn btnPrimary" id="btnSyncNow">🔄 Sincronizar agora</button>
+              <button class="btn btnWarn" id="btnClearQ">🗑️ Limpar fila</button>
+            </div>
+            <div class="hint">Limpar fila apaga registros pendentes deste aparelho.</div>
+            ${rows}
+          `
+        );
+
+        const sn = document.getElementById("btnSyncNow");
+        if (sn) sn.onclick = () => { closeSheet(); syncQueue({ silentIfEmpty: true, showPopups: true }); };
+
+        const cq = document.getElementById("btnClearQ");
+        if (cq) cq.onclick = () => {
+          openSheet("Confirmar", "Apagar TODOS os pendentes deste aparelho?", `
+            <div class="btnRow">
+              <button class="btn btnWarn" id="yesClear">Apagar</button>
+              <button class="btn" id="noClear">Cancelar</button>
+            </div>
+          `);
+          document.getElementById("yesClear").onclick = () => { setQueue([]); closeSheet(); if (badge) badge.textContent = "Fila limpa"; };
+          document.getElementById("noClear").onclick = closeSheet;
+        };
+      }
+
 
       function openRegistro(kind, refId) {
         // kind: "MOVIMENTACOES" | "LOG_EVENTOS"
@@ -588,7 +747,8 @@ function getQueue() {
           if (badge) badge.textContent = followOn ? "GPS: seguindo" : "GPS: livre";
         });
 
-        btnSync.addEventListener("click", () => syncQueue());
+        btnPend.addEventListener("click", () => openPendentes());
+        btnSync.addEventListener("click", () => syncQueue({ silentIfEmpty: false, showPopups: true }));
 
         btnReg.addEventListener("click", () => {
           if (selected?.type === "cto") openRegistro("MOVIMENTACOES", selected.props?.cto_id || "");
@@ -714,6 +874,14 @@ function getQueue() {
 
         return map;
       }
+
+      window.addEventListener("offline", onBecameOffline);
+      window.addEventListener("online", onBecameOnline);
+      if (!navigator.onLine) onBecameOffline();
+
+      setInterval(() => {
+        if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false });
+      }, 45000);
 
       initMap();
     });
