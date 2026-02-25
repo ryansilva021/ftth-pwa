@@ -801,11 +801,16 @@ function getQueue() {
               selected = { type: "cto", props: f.properties };
               showSelectedSheet();
             });
-            });
 
+            // Toggle CTOs (respeita checkbox)
             setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
-                      setLayerVisible("ctos-x-blink", (elToggleCTOs?.checked ?? true));
-setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
+
+          } catch (err) {
+            console.error("load error", err);
+            if (badge) badge.textContent = "Erro ao carregar camadas";
+          }
+        });
 
             // Caixas
             const caixas = await fetchJSON("/api/caixas_emenda_cdo");
