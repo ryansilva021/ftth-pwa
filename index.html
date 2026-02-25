@@ -1,86 +1,108 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FTTH-PWA Mapa</title>
+<script>
+  const badge = document.getElementById("badge");
+  badge.textContent = `BUILD: ${window.__BUILD_ID__}`;
 
-  <script>
-    window.firebaseConfig = {
-      apiKey: "AIzaSyBXm_bmI2IWdAYlRT4xTD3i62OKNRTnL7E",
-      authDomain: "ftth-pwa.firebaseapp.com",
-      projectId: "ftth-pwa",
-      appId: "1:500132406841:web:0d00c18ae6d6e01c18cfe8"
-    };
+  async function loadCTOs(map) {
+    try {
+      const res = await fetch(`${window.WORKER_URL}/api/ctos`);
+      const ctos = await res.json();
 
-    window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-FIREBASE-2026-02-25-MAP-NOLOGIN";
+      console.log("CTOs carregadas:", ctos.length);
 
-    window.PROJECT_CENTER = [-43.166, -22.412];
-    window.PROJECT_ZOOM = 12;
-  </script>
-
-  <!-- MapLibre -->
-  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-
-  <style>
-    body{margin:0;font-family:Arial,sans-serif;background:#0b1220;color:#fff}
-    header{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;background:#111a2e}
-    .left{display:flex;gap:10px;align-items:center}
-    .badge{font-size:12px;color:#9ca3af}
-    button{padding:8px 10px;border:none;border-radius:8px;background:#22c55e;color:#000;font-weight:700;cursor:pointer}
-    #map{width:100vw;height:calc(100vh - 56px)}
-  </style>
-</head>
-<body>
-  <header>
-    <div class="left">
-      <div><b>🗺️ FTTH Mapa</b></div>
-      <div class="badge" id="badge">modo sem login</div>
-    </div>
-    <div class="right">
-      <!-- Mantido só como placeholder -->
-      <button id="btnLogin" style="display:none;">Login</button>
-    </div>
-  </header>
-
-  <div id="map"></div>
-
-  <script>
-    const badge = document.getElementById("badge");
-    badge.textContent = `BUILD: ${window.__BUILD_ID__}`;
-
-    function initMap() {
-      const map = new maplibregl.Map({
-        container: "map",
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: "raster",
-              tiles: [
-                "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
-              ],
-              tileSize: 256,
-              attribution: "&copy; OpenStreetMap contributors",
-            },
+      // Converter para GeoJSON
+      const geojson = {
+        type: "FeatureCollection",
+        features: ctos.map(cto => ({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [cto.lng, cto.lat]
           },
-          layers: [{ id: "osm", type: "raster", source: "osm" }],
-        },
-        center: window.PROJECT_CENTER,
-        zoom: window.PROJECT_ZOOM,
-        attributionControl: true,
+          properties: {
+            cto_id: cto.cto_id,
+            bairro: cto.bairro,
+            rua: cto.rua,
+            capacidade: cto.capacidade
+          }
+        }))
+      };
+
+      map.addSource("ctos", {
+        type: "geojson",
+        data: geojson
       });
 
-      map.addControl(new maplibregl.NavigationControl(), "top-right");
-      return map;
-    }
+      map.addLayer({
+        id: "ctos-layer",
+        type: "circle",
+        source: "ctos",
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#22c55e",
+          "circle-stroke-width": 1,
+          "circle-stroke-color": "#000"
+        }
+      });
 
-    // Boot direto (sem auth)
-    initMap();
-  </script>
-</body>
-</html>
+      // Popup ao clicar
+      map.on("click", "ctos-layer", (e) => {
+        const props = e.features[0].properties;
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <b>${props.cto_id}</b><br>
+            Bairro: ${props.bairro}<br>
+            Rua: ${props.rua}<br>
+            Capacidade: ${props.capacidade}
+          `)
+          .addTo(map);
+      });
+
+      map.on("mouseenter", "ctos-layer", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "ctos-layer", () => {
+        map.getCanvas().style.cursor = "";
+      });
+
+    } catch (err) {
+      console.error("Erro ao carregar CTOs:", err);
+    }
+  }
+
+  function initMap() {
+    const map = new maplibregl.Map({
+      container: "map",
+      style: {
+        version: 8,
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: [
+              "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+              "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+              "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            ],
+            tileSize: 256,
+            attribution: "&copy; OpenStreetMap contributors",
+          },
+        },
+        layers: [{ id: "osm", type: "raster", source: "osm" }],
+      },
+      center: window.PROJECT_CENTER,
+      zoom: window.PROJECT_ZOOM,
+      attributionControl: true,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+    map.on("load", () => {
+      loadCTOs(map);
+    });
+
+    return map;
+  }
+
+  // Boot direto (sem auth)
+  initMap();
+</script>
