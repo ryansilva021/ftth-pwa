@@ -645,7 +645,6 @@ function getQueue() {
           container: "map",
           style: {
             version: 8,
-          glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
             sources: {
               osm: {
                 type: "raster",
@@ -722,29 +721,47 @@ function getQueue() {
 
             map.addSource("ctos", { type: "geojson", data: ctosGeo });
 
-            // Layer principal: "X" com cor por ocupação
+            // Desenhar ícone "X" via Canvas (não depende de glyphs/font)
+            function ensureCtoXIcon() {
+              if (map.hasImage("cto-x")) return;
+              const size = 64;
+              const c = document.createElement("canvas");
+              c.width = size; c.height = size;
+              const ctx = c.getContext("2d");
+              ctx.clearRect(0,0,size,size);
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 10;
+              ctx.lineCap = "round";
+              ctx.beginPath();
+              ctx.moveTo(14,14); ctx.lineTo(size-14,size-14);
+              ctx.moveTo(size-14,14); ctx.lineTo(14,size-14);
+              ctx.stroke();
+              // SDF para permitir icon-color via paint
+              map.addImage("cto-x", c, { sdf: true });
+            }
+            ensureCtoXIcon();
+
+            // Layer principal: X com cor por ocupação
             map.addLayer({
               id: "ctos-x",
               type: "symbol",
               source: "ctos",
               layout: {
-                "text-field": "✕",
-                "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-                "text-size": 18,
-                "text-allow-overlap": true,
-                "text-ignore-placement": true
+                "icon-image": "cto-x",
+                "icon-size": 0.42,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
               },
               paint: {
-                // verde < 70%, amarelo >=70% e <100%, vermelho >=100%
-                "text-color": [
+                "icon-color": [
                   "case",
                   [">=", ["get", "pct"], 1], "#ef4444",
                   [">=", ["get", "pct"], 0.7], "#f59e0b",
                   "#22c55e"
                 ],
-                "text-halo-color": "rgba(0,0,0,0.85)",
-                "text-halo-width": 2,
-                "text-opacity": 1
+                "icon-halo-color": "rgba(0,0,0,0.90)",
+                "icon-halo-width": 2,
+                "icon-opacity": 1
               }
             });
 
@@ -755,17 +772,16 @@ function getQueue() {
               source: "ctos",
               filter: [">=", ["get", "pct"], 1],
               layout: {
-                "text-field": "✕",
-                "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
-                "text-size": 20,
-                "text-allow-overlap": true,
-                "text-ignore-placement": true
+                "icon-image": "cto-x",
+                "icon-size": 0.52,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
               },
               paint: {
-                "text-color": "#ef4444",
-                "text-halo-color": "rgba(0,0,0,0.95)",
-                "text-halo-width": 3,
-                "text-opacity": 1
+                "icon-color": "#ef4444",
+                "icon-halo-color": "rgba(0,0,0,0.95)",
+                "icon-halo-width": 3,
+                "icon-opacity": 1
               }
             });
 
@@ -774,7 +790,7 @@ function getQueue() {
             setInterval(() => {
               try {
                 blinkOn = !blinkOn;
-                map.setPaintProperty("ctos-x-blink", "text-opacity", blinkOn ? 1 : 0.2);
+                map.setPaintProperty("ctos-x-blink", "icon-opacity", blinkOn ? 1 : 0.2);
               } catch (_) {}
             }, 650);
 
@@ -784,6 +800,7 @@ function getQueue() {
               if (!f) return;
               selected = { type: "cto", props: f.properties };
               showSelectedSheet();
+            });
             });
 
             setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
