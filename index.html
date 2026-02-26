@@ -9,7 +9,7 @@
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
     window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
     window.SUBMIT_KEY = "1Qaz2wsX3edc";
-    window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
+    window.PROJECT_CENTER = [-22.262521, -41.978757]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
   </script>
 
@@ -228,12 +228,17 @@
       function wireToggles() {
         elToggleCTOs?.addEventListener("change", () => {
           const on = elToggleCTOs.checked;
+          setLayerVisible("ctos-glow", on);
           setLayerVisible("ctos-x-outline", on);
           setLayerVisible("ctos-x", on);
           setLayerVisible("ctos-x-blink-outline", on);
           setLayerVisible("ctos-x-blink", on);
         });
-        elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
+        elToggleCaixas?.addEventListener("change", () => {
+          const on = elToggleCaixas.checked;
+          setLayerVisible("caixas-outline", on);
+          setLayerVisible("caixas-layer", on);
+        });
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
 
@@ -337,6 +342,8 @@
       }
 
       async function syncQueue(opts = {}) {
+        // Evita erro de CORS quando abrir via file:// (teste local). No Pages funciona normal.
+        if (location.protocol === "file:") return;
         const { silentIfEmpty = false, showPopups = false } = opts;
         const q = getQueue();
         if (!q.length) {
@@ -729,16 +736,16 @@ function getQueue() {
             function ensureCtoXIcon() {
               if (map.hasImage("cto-x")) return;
 
-              const size = 128;
+              const size = 96;
               const c = document.createElement("canvas");
               c.width = size; c.height = size;
               const ctx = c.getContext("2d");
               ctx.clearRect(0, 0, size, size);
 
               // X shape (white base; color applied via icon-color using SDF)
-              const pad = 30;
+              const pad = 22;
               ctx.strokeStyle = "#ffffff";
-              ctx.lineWidth = 18;
+              ctx.lineWidth = 20;
               ctx.lineCap = "round";
               ctx.lineJoin = "round";
               ctx.beginPath();
@@ -750,74 +757,67 @@ function getQueue() {
               map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
             }
 
-            function ensureCtoBgIcon() {
-              if (map.hasImage("cto-bg")) return;
+            function ensureCtoGlowIcon() {
+              if (map.hasImage("cto-glow")) return;
+
               const size = 128;
               const c = document.createElement("canvas");
               c.width = size; c.height = size;
               const ctx = c.getContext("2d");
               ctx.clearRect(0, 0, size, size);
 
-              // subtle rounded square background like the model screenshot
-              const r = 18;
-              const pad = 22;
-              const x = pad, y = pad, w = size - pad*2, h = size - pad*2;
+              // Glow: radial gradient (vermelho discreto)
+              const cx = size / 2, cy = size / 2;
+              const rOuter = 56;
+              const rInner = 6;
 
-              ctx.fillStyle = "rgba(255,255,255,0.75)";
-              ctx.strokeStyle = "rgba(0,0,0,0.18)";
-              ctx.lineWidth = 6;
+              const g = ctx.createRadialGradient(cx, cy, rInner, cx, cy, rOuter);
+              g.addColorStop(0.0, "rgba(239,68,68,0.40)");
+              g.addColorStop(0.55, "rgba(239,68,68,0.18)");
+              g.addColorStop(1.0, "rgba(239,68,68,0.00)");
 
+              ctx.fillStyle = g;
               ctx.beginPath();
-              ctx.moveTo(x+r, y);
-              ctx.lineTo(x+w-r, y);
-              ctx.quadraticCurveTo(x+w, y, x+w, y+r);
-              ctx.lineTo(x+w, y+h-r);
-              ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
-              ctx.lineTo(x+r, y+h);
-              ctx.quadraticCurveTo(x, y+h, x, y+h-r);
-              ctx.lineTo(x, y+r);
-              ctx.quadraticCurveTo(x, y, x+r, y);
+              ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
               ctx.closePath();
-
               ctx.fill();
-              ctx.stroke();
 
               const img = ctx.getImageData(0, 0, size, size);
-              map.addImage("cto-bg", { width: size, height: size, data: img.data });
+              map.addImage("cto-glow", { width: size, height: size, data: img.data });
             }
-            ensureCtoXIcon();
-            ensureCtoBgIcon();
 
-            // Layers CTO: outline preto + X colorido + blink quando cheia
+            ensureCtoXIcon();
+            ensureCtoGlowIcon();            // Layers CTO: outline preto + X colorido + blink quando cheia
             // Outline (preto) - sempre por baixo
             map.addLayer({
-              id: "ctos-bg",
+              id: "ctos-glow",
               type: "symbol",
               source: "ctos",
+              filter: [">=", ["get", "pct"], 1],
               layout: {
-                "icon-image": "cto-bg",
-                "icon-size": 0.18,
+                "icon-image": "cto-glow",
+                "icon-size": 0.36,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
               paint: {
-                "icon-opacity": 1
+                "icon-opacity": 0.8
               }
             });
 
-            map.addLayer({
+                        map.addLayer({
               id: "ctos-x-outline",
               type: "symbol",
               source: "ctos",
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.22,
+                "icon-size": 0.23,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
               paint: {
-                "icon-color": "#0b0b0b",
-                "icon-opacity": 0.90
+                "icon-color": "#000000",
+                "icon-opacity": 1
               }
             });
 
@@ -828,7 +828,7 @@ function getQueue() {
               source: "ctos",
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.21,
+                "icon-size": 0.17,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -851,11 +851,11 @@ function getQueue() {
               filter: [">=", ["get", "pct"], 1],
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.18,
+                "icon-size": 0.17,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
-              paint: { "icon-color": "#0b0b0b", "icon-opacity": 0.85 }
+              paint: { "icon-color": "#000000", "icon-opacity": 0.85 }
             });
 
             // Blink colorido (vermelho) só CTO cheia
@@ -866,7 +866,7 @@ function getQueue() {
               filter: [">=", ["get", "pct"], 1],
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.18,
+                "icon-size": 0.17,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -880,13 +880,14 @@ function getQueue() {
                 const vis = map.getLayoutProperty("ctos-x-blink", "visibility");
                 if (vis === "none") return;
                 blinkOn = !blinkOn;
-                map.setPaintProperty("ctos-x-blink", "icon-opacity", blinkOn ? 1 : 0.2);
-                map.setPaintProperty("ctos-x-blink-outline", "icon-opacity", blinkOn ? 0.85 : 0.15);
-              } catch (_) {}
-            }, 650);
+                map.setPaintProperty("ctos-x-blink", "icon-opacity", 1);
+                map.setPaintProperty("ctos-x-blink-outline", "icon-opacity", 1);
+              
+                map.setPaintProperty("ctos-glow", "icon-opacity", blinkOn ? 0.95 : 0.10);} catch (_) {}
+            }, 900);
 
-            // Visibilidade inicial conforme toggle
-            setLayerVisible("ctos-bg", elToggleCTOs?.checked ?? true);
+            // Visibilidade inicial conforme toggle            setLayerVisible("ctos-glow", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-glow", elToggleCTOs?.checked ?? true);
             setLayerVisible("ctos-x-outline", elToggleCTOs?.checked ?? true);
             setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
             setLayerVisible("ctos-x-blink-outline", elToggleCTOs?.checked ?? true);
@@ -906,51 +907,71 @@ function getQueue() {
             map.addSource("caixas", { type: "geojson", data: caixasGeo });
 
             function ensureCaixaIcons() {
-              // CE: quadrado
+              // Ícones vazados (hollow) em SDF para permitir icon-color (laranja/roxo) e contorno preto.
+              // CE: quadrado vazado
               if (!map.hasImage("ce-square")) {
-                const size = 64;
+                const size = 96;
                 const c = document.createElement("canvas");
                 c.width = size; c.height = size;
                 const ctx = c.getContext("2d");
                 ctx.clearRect(0,0,size,size);
+
+                // desenha um bloco branco e recorta o miolo para ficar vazado
+                const pad = 18;
+                const w = size - pad*2;
                 ctx.fillStyle = "#ffffff";
+                ctx.fillRect(pad, pad, w, w);
+
                 
-                // recorte interno
-                ctx.globalCompositeOperation = "destination-out";
-                
-                ctx.globalCompositeOperation = "source-over";
+
                 const img = ctx.getImageData(0,0,size,size);
                 map.addImage("ce-square", { width:size, height:size, data: img.data }, { sdf:true });
               }
 
-              // CDO: triângulo
+              // CDO: triângulo vazado
               if (!map.hasImage("cdo-tri")) {
-                const size = 64;
+                const size = 96;
                 const c = document.createElement("canvas");
                 c.width = size; c.height = size;
                 const ctx = c.getContext("2d");
                 ctx.clearRect(0,0,size,size);
+
                 ctx.fillStyle = "#ffffff";
                 ctx.beginPath();
-                ctx.moveTo(size/2, 12);
-                ctx.lineTo(size-12, size-12);
-                ctx.lineTo(12, size-12);
+                ctx.moveTo(size/2, 14);
+                ctx.lineTo(size-14, size-14);
+                ctx.lineTo(14, size-14);
                 ctx.closePath();
                 ctx.fill();
-                // recorte interno
-                ctx.globalCompositeOperation = "destination-out";
-                ctx.beginPath();
-                ctx.moveTo(size/2, 20);
-                ctx.lineTo(size-20, size-20);
-                ctx.lineTo(20, size-20);
-                ctx.closePath();
-                ctx.fill();
-                ctx.globalCompositeOperation = "source-over";
+
+                // recorta o miolo para ficar vazado (hollow)
+                
+
                 const img = ctx.getImageData(0,0,size,size);
                 map.addImage("cdo-tri", { width:size, height:size, data: img.data }, { sdf:true });
               }
             }
             ensureCaixaIcons();
+
+            map.addLayer({
+              id: "caixas-outline",
+              type: "symbol",
+              source: "caixas",
+              layout: {
+                "icon-image": [
+                  "case",
+                  ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
+                  "cdo-tri"
+                ],
+                "icon-size": 0.22,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-color": "#000000",
+                "icon-opacity": 0.85
+              }
+            });
 
             map.addLayer({
               id: "caixas-layer",
@@ -962,7 +983,7 @@ function getQueue() {
                   ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
                   "cdo-tri"
                 ],
-                "icon-size": 0.18,
+                "icon-size": 0.20,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -976,6 +997,7 @@ function getQueue() {
               }
             });
 
+            setLayerVisible("caixas-outline", elToggleCaixas?.checked ?? true);
             setLayerVisible("caixas-layer", elToggleCaixas?.checked ?? true);
 
 
@@ -1005,6 +1027,7 @@ function getQueue() {
                 "line-opacity": 0.92
               },
             });
+            try { map.moveLayer("rotas-layer", "ctos-glow"); } catch(e) { try { map.moveLayer("rotas-layer", "ctos-x-outline"); } catch(_){} }
             setLayerVisible("rotas-layer", elToggleRotas?.checked ?? true);
 
             // Interações: toque seleciona e abre sheet (mobile-first)
