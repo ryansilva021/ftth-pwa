@@ -7,7 +7,7 @@
 
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
-    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-CTO-X";
+    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
     window.SUBMIT_KEY = "1Qaz2wsX3edc";
     window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
@@ -226,8 +226,10 @@
       }
 
       function wireToggles() {
-        elToggleCTOs?.addEventListener("change", () => setLayerVisible("ctos-x", elToggleCTOs.checked));
-        setLayerVisible("ctos-x-blink", (elToggleCTOs?.checked ?? true));
+        elToggleCTOs?.addEventListener("change", () => {
+          setLayerVisible("ctos-x", elToggleCTOs.checked);
+          setLayerVisible("ctos-x-blink", elToggleCTOs.checked);
+        });
         elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
@@ -696,11 +698,11 @@ function getQueue() {
           try {
             // CTOs
             const ctos = await fetchJSON("/api/ctos");
-            // Ocupação: contar MOVIMENTACOES por CTO_ID (cada linha = 1 cliente/uso)
             const movs = await fetchJSON("/api/movimentacoes");
+
             const usedByCto = new Map();
             for (const mv of movs) {
-              const id = (mv.cto_id || "").trim();
+              const id = String(mv.cto_id || "").trim();
               if (!id) continue;
               usedByCto.set(id, (usedByCto.get(id) || 0) + 1);
             }
@@ -709,27 +711,24 @@ function getQueue() {
               type: "FeatureCollection",
               features: ctos.map((cto) => {
                 const cap = Number(cto.capacidade || 0) || 0;
-                const used = usedByCto.get((cto.cto_id || "").trim()) || 0;
+                const used = usedByCto.get(String(cto.cto_id || "").trim()) || 0;
                 const pct = cap > 0 ? used / cap : 0;
                 return ({
                   type: "Feature",
                   geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
-                  properties: { ...cto, cap, used, pct }
+                  properties: { ...cto, used, cap, pct },
                 });
               }),
             };
-
             map.addSource("ctos", { type: "geojson", data: ctosGeo });
 
-            // Ícone X via Canvas (SDF para permitir icon-color)
+            // Ícone "X" desenhado em canvas -> ImageData (evita erro de tamanho 0)
             function ensureCtoXIcon() {
               if (map.hasImage("cto-x")) return;
               const size = 64;
               const c = document.createElement("canvas");
               c.width = size; c.height = size;
               const ctx = c.getContext("2d");
-
-              // desenha o X em branco (SDF permite mudar cor via icon-color)
               ctx.clearRect(0, 0, size, size);
               ctx.strokeStyle = "#ffffff";
               ctx.lineWidth = 10;
@@ -738,14 +737,11 @@ function getQueue() {
               ctx.moveTo(14, 14); ctx.lineTo(size - 14, size - 14);
               ctx.moveTo(size - 14, 14); ctx.lineTo(14, size - 14);
               ctx.stroke();
-
-              // MapLibre às vezes falha com canvas direto; usamos ImageData (width/height explícitos)
               const img = ctx.getImageData(0, 0, size, size);
               map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
             }
             ensureCtoXIcon();
 
-            // Layer principal: X com cor por ocupação
             map.addLayer({
               id: "ctos-x",
               type: "symbol",
@@ -754,22 +750,21 @@ function getQueue() {
                 "icon-image": "cto-x",
                 "icon-size": 0.42,
                 "icon-allow-overlap": true,
-                "icon-ignore-placement": true
+                "icon-ignore-placement": true,
               },
               paint: {
                 "icon-color": [
                   "case",
                   [">=", ["get", "pct"], 1], "#ef4444",
                   [">=", ["get", "pct"], 0.7], "#f59e0b",
-                  "#22c55e"
+                  "#22c55e",
                 ],
                 "icon-halo-color": "rgba(0,0,0,0.90)",
                 "icon-halo-width": 2,
-                "icon-opacity": 1
-              }
+                "icon-opacity": 1,
+              },
             });
 
-            // Layer de piscar: só CTO cheia (pct>=1)
             map.addLayer({
               id: "ctos-x-blink",
               type: "symbol",
@@ -779,31 +774,110 @@ function getQueue() {
                 "icon-image": "cto-x",
                 "icon-size": 0.52,
                 "icon-allow-overlap": true,
-                "icon-ignore-placement": true
+                "icon-ignore-placement": true,
               },
               paint: {
                 "icon-color": "#ef4444",
                 "icon-halo-color": "rgba(0,0,0,0.95)",
                 "icon-halo-width": 3,
-                "icon-opacity": 1
-              }
+                "icon-opacity": 1,
+              },
             });
 
-            // animação piscar (opacidade)
+            // piscar só quando layer está visível
             let blinkOn = true;
             setInterval(() => {
               try {
+                const vis = map.getLayoutProperty("ctos-x-blink", "visibility");
+                if (vis !== "visible") return;
                 blinkOn = !blinkOn;
                 map.setPaintProperty("ctos-x-blink", "icon-opacity", blinkOn ? 1 : 0.2);
               } catch (_) {}
             }, 650);
 
             map.on("click", "ctos-x", (e) => {
+              const f = e.features?.[0];
+              if (!f) return;
+              selected = { type: "cto", props: f.properties };
+              showSelectedSheet();
+            });
+
+            // Caixas
+            const caixas = await fetchJSON("/api/caixas_emenda_cdo");
+            const caixasGeo = {
+              type: "FeatureCollection",
+              features: caixas.map((cx) => ({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [cx.lng, cx.lat] },
+                properties: cx,
+              })),
+            };
+            map.addSource("caixas", { type: "geojson", data: caixasGeo });
+            map.addLayer({
+              id: "caixas-layer",
+              type: "circle",
+              source: "caixas",
+              paint: {
+                "circle-radius": 7,
+                "circle-color": [
+                  "match",
+                  ["upcase", ["to-string", ["get","tipo"]]],
+                  "CDO", "#a855f7", // roxo
+                  "CE", "#f97316",  // laranja
+                  "#60a5fa",
+                ],
+                "circle-stroke-width": 1,
+                "circle-stroke-color": "#000",
+              },
+            });
+            setLayerVisible("caixas-layer", elToggleCaixas?.checked ?? true);
+
+            // Rotas (GeoJSON FeatureCollection)
+            const rotas = await fetchJSON("/api/rotas_fibras");
+            map.addSource("rotas", { type: "geojson", data: rotas });
+            map.addLayer({
+              id: "rotas-layer",
+              type: "line",
+              source: "rotas",
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": [
+                  "case",
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], "#3b82f6", // backbone azul
+                  ["in","RAMAL",["to-string",["get","tipos"]]], "#000000",    // ramal preto
+                  ["in","DROP",["to-string",["get","tipos"]]], "#22c55e",     // drop verde
+                  "#f59e0b" // rota padrão laranja
+                ],
+                "line-width": [
+                  "case",
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], 6,
+                  ["in","RAMAL",["to-string",["get","tipos"]]], 3.5,
+                  ["in","DROP",["to-string",["get","tipos"]]], 2,
+                  3
+                ],
+                "line-opacity": 0.92
+              },
+            });
+            setLayerVisible("rotas-layer", elToggleRotas?.checked ?? true);
+
+            // Interações: toque seleciona e abre sheet (mobile-first)
+            map.on("click", "ctos-x", (e) => {
               const props = e.features?.[0]?.properties || {};
               selected = { type: "cto", props, lngLat: e.lngLat };
               showSelectedSheet();
             });
-// Cursor desktop (não atrapalha mobile)
+            map.on("click", "caixas-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "caixa", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+            map.on("click", "rotas-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "rota", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+
+            // Cursor desktop (não atrapalha mobile)
             map.on("mouseenter", "ctos-x", () => (map.getCanvas().style.cursor = "pointer"));
             map.on("mouseleave", "ctos-x", () => (map.getCanvas().style.cursor = ""));
             map.on("mouseenter", "caixas-layer", () => (map.getCanvas().style.cursor = "pointer"));
