@@ -729,49 +729,94 @@ function getQueue() {
             function ensureCtoXIcon() {
               if (map.hasImage("cto-x")) return;
 
-              // High-res canvas for smoother icon (mobile)
               const size = 128;
               const c = document.createElement("canvas");
               c.width = size; c.height = size;
               const ctx = c.getContext("2d");
-
               ctx.clearRect(0, 0, size, size);
 
-              // Clean "X" with rounded caps
-              const pad = 28;
-              const x1 = pad, y1 = pad;
-              const x2 = size - pad, y2 = size - pad;
-
+              // X shape (white base; color applied via icon-color using SDF)
+              const pad = 30;
               ctx.strokeStyle = "#ffffff";
               ctx.lineWidth = 18;
               ctx.lineCap = "round";
               ctx.lineJoin = "round";
-
               ctx.beginPath();
-              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-              ctx.moveTo(x2, y1); ctx.lineTo(x1, y2);
+              ctx.moveTo(pad, pad); ctx.lineTo(size - pad, size - pad);
+              ctx.moveTo(size - pad, pad); ctx.lineTo(pad, size - pad);
               ctx.stroke();
 
-              // MapLibre: use explicit ImageData to avoid mismatched image size bugs
               const img = ctx.getImageData(0, 0, size, size);
               map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
             }
+
+            function ensureCtoBgIcon() {
+              if (map.hasImage("cto-bg")) return;
+              const size = 128;
+              const c = document.createElement("canvas");
+              c.width = size; c.height = size;
+              const ctx = c.getContext("2d");
+              ctx.clearRect(0, 0, size, size);
+
+              // subtle rounded square background like the model screenshot
+              const r = 18;
+              const pad = 22;
+              const x = pad, y = pad, w = size - pad*2, h = size - pad*2;
+
+              ctx.fillStyle = "rgba(255,255,255,0.75)";
+              ctx.strokeStyle = "rgba(0,0,0,0.18)";
+              ctx.lineWidth = 6;
+
+              ctx.beginPath();
+              ctx.moveTo(x+r, y);
+              ctx.lineTo(x+w-r, y);
+              ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+              ctx.lineTo(x+w, y+h-r);
+              ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+              ctx.lineTo(x+r, y+h);
+              ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+              ctx.lineTo(x, y+r);
+              ctx.quadraticCurveTo(x, y, x+r, y);
+              ctx.closePath();
+
+              ctx.fill();
+              ctx.stroke();
+
+              const img = ctx.getImageData(0, 0, size, size);
+              map.addImage("cto-bg", { width: size, height: size, data: img.data });
+            }
             ensureCtoXIcon();
+            ensureCtoBgIcon();
 
             // Layers CTO: outline preto + X colorido + blink quando cheia
             // Outline (preto) - sempre por baixo
+            map.addLayer({
+              id: "ctos-bg",
+              type: "symbol",
+              source: "ctos",
+              layout: {
+                "icon-image": "cto-bg",
+                "icon-size": 0.24,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-opacity": 1
+              }
+            });
+
             map.addLayer({
               id: "ctos-x-outline",
               type: "symbol",
               source: "ctos",
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.24,
+                "icon-size": 0.22,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
               paint: {
-                "icon-color": "#000000",
+                "icon-color": "#0b0b0b",
                 "icon-opacity": 0.90
               }
             });
@@ -806,11 +851,11 @@ function getQueue() {
               filter: [">=", ["get", "pct"], 1],
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.27,
+                "icon-size": 0.24,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
-              paint: { "icon-color": "#000000", "icon-opacity": 0.85 }
+              paint: { "icon-color": "#0b0b0b", "icon-opacity": 0.85 }
             });
 
             // Blink colorido (vermelho) só CTO cheia
@@ -841,6 +886,7 @@ function getQueue() {
             }, 650);
 
             // Visibilidade inicial conforme toggle
+            setLayerVisible("ctos-bg", elToggleCTOs?.checked ?? true);
             setLayerVisible("ctos-x-outline", elToggleCTOs?.checked ?? true);
             setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
             setLayerVisible("ctos-x-blink-outline", elToggleCTOs?.checked ?? true);
@@ -916,7 +962,7 @@ function getQueue() {
                   ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
                   "cdo-tri"
                 ],
-                "icon-size": 0.34,
+                "icon-size": 0.24,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
