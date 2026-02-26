@@ -9,7 +9,7 @@
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
     window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
     window.SUBMIT_KEY = "1Qaz2wsX3edc";
-    window.PROJECT_CENTER = [-22.262521, -41.978757]; // [lng, lat]
+    window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
   </script>
 
@@ -153,6 +153,7 @@
 
   <script>
     window.addEventListener("DOMContentLoaded", () => {
+      const IS_FILE_ORIGIN = (location.protocol === "file:" || location.origin === "null");
       const badge = document.getElementById("badge");
       if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__}`;
 
@@ -176,6 +177,10 @@
       // Estado
       let selected = null; // {type:'cto'|'caixa'|'rota', props, lngLat}
       let map = null;
+
+      // Movimentações por CTO (para lista de clientes online + histórico)
+      let movByCto = new Map(); // cto_id -> [{ts,tipo,cliente,usuario,obs,raw}]
+      let onlineClientsByCto = new Map(); // cto_id -> [{cliente, last_ts, last_tipo, usuario, obs}]
 
       // GPS
       let watchId = null;
@@ -209,6 +214,10 @@
       }
       function onBecameOnline() {
         offlinePopupShown = false;
+        if (IS_FILE_ORIGIN) {
+          if (badge) badge.textContent = "🟢 Online (sync desativado em file://)";
+          return;
+        }
         if (badge) badge.textContent = "🟢 Online — sincronizando...";
         syncQueue({ silentIfEmpty: true, showPopups: false });
       }
@@ -270,20 +279,81 @@
         const { type, props, lngLat } = selected;
 
         if (type === "cto") {
-          const title = `CTO ${props.cto_id || ""}`;
+          const ctoId = String(props.cto_id || "").trim();
+          const title = `CTO ${ctoId || ""}`;
           const subtitle = `📌 ${props.bairro || ""} • ${props.rua || ""}`;
+
+          const online = (onlineClientsByCto.get(ctoId) || []);
+          const hist = (movByCto.get(ctoId) || []);
+
+          const onlineHTML = online.length ? `
+            <div style="margin-top:12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="font-weight:800;">🟢 Clientes online (${online.length})</div>
+                <div class="badge">última ação por cliente</div>
+              </div>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+                ${online.slice(0, 25).map((c) => `
+                  <div style="border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                      <div><b>${escapeHTML(c.cliente)}</b></div>
+                      <div class="badge">${escapeHTML(fmtTs(c.last_ts))}</div>
+                    </div>
+                    <div class="hint">Ação: <b>${escapeHTML(String(c.last_tipo||""))}</b>${c.usuario ? ` • por <b>${escapeHTML(c.usuario)}</b>` : ""}</div>
+                    ${c.obs ? `<div class="hint">📝 ${escapeHTML(c.obs)}</div>` : ``}
+                  </div>
+                `).join("")}
+                ${online.length > 25 ? `<div class="hint">Mostrando 25 de ${online.length}.</div>` : ``}
+              </div>
+            </div>
+          ` : `
+            <div style="margin-top:12px;">
+              <div style="font-weight:800;">🟢 Clientes online (0)</div>
+              <div class="hint">Nenhum cliente “online” encontrado para esta CTO (baseado na última movimentação por cliente).</div>
+            </div>
+          `;
+
+          const histHTML = hist.length ? `
+            <div style="margin-top:14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="font-weight:800;">🧾 Histórico (${hist.length})</div>
+                <div class="badge">mais recente primeiro</div>
+              </div>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+                ${hist.slice(0, 30).map((h) => `
+                  <div style="border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                      <div><b>${escapeHTML(String(h.tipo||""))}</b>${h.cliente ? ` • ${escapeHTML(h.cliente)}` : ""}</div>
+                      <div class="badge">${escapeHTML(fmtTs(h.ts))}</div>
+                    </div>
+                    <div class="hint">${h.usuario ? `👤 ${escapeHTML(h.usuario)}` : "👤 -"}${h.obs ? ` • 📝 ${escapeHTML(h.obs)}` : ""}</div>
+                  </div>
+                `).join("")}
+                ${hist.length > 30 ? `<div class="hint">Mostrando 30 de ${hist.length}.</div>` : ``}
+              </div>
+            </div>
+          ` : `
+            <div style="margin-top:14px;">
+              <div style="font-weight:800;">🧾 Histórico (0)</div>
+              <div class="hint">Ainda não há registros de movimentação para esta CTO.</div>
+            </div>
+          `;
+
           const body = `
             <div class="btnRow">
               <button class="btn btnBlue" id="goNav">🧭 Navegar</button>
               <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
             </div>
             <div class="hint">Capacidade: <b>${props.capacidade ?? ""}</b></div>
+            ${onlineHTML}
+            ${histHTML}
           `;
           openSheet(title, subtitle, body);
           document.getElementById("goNav").onclick = () => openExternalNav(lngLat.lng, lngLat.lat, title);
-          document.getElementById("goReg").onclick = () => openRegistro("MOVIMENTACOES", props.cto_id || "");
+          document.getElementById("goReg").onclick = () => openRegistro("MOVIMENTACOES", ctoId || "");
           return;
         }
+
 
         if (type === "caixa") {
           const title = `${props.tipo || "Caixa"} ${props.id || ""}`;
@@ -326,6 +396,33 @@
           .replaceAll("'", "&#039;");
       }
 
+      function normTs(v) {
+        const s = String(v ?? "").trim();
+        if (!s) return "";
+        return s;
+      }
+      function pick(o, keys) {
+        for (const k of keys) {
+          if (o && o[k] != null && String(o[k]).trim() !== "") return o[k];
+        }
+        return "";
+      }
+      function normalizeMov(mv) {
+        const cto_id = String(pick(mv, ["cto_id","CTO_ID","cto","CTO","ctoId"])).trim();
+        const tipo = String(pick(mv, ["tipo","Tipo","action","ACTION"])).trim().toUpperCase();
+        const cliente = String(pick(mv, ["cliente","Cliente","client","CLIENTE"])).trim();
+        const usuario = String(pick(mv, ["usuario","Usuario","user","USER"])).trim();
+        const obs = String(pick(mv, ["observacao","Observacao","obs","OBS","details","DETAILS"])).trim();
+        const ts = normTs(pick(mv, ["data","DATA","ts","TS","created_at","createdAt","dt_criacao","dt","timestamp"]));
+        return { cto_id, tipo, cliente, usuario, obs, ts, raw: mv };
+      }
+      function fmtTs(ts) {
+        const s = String(ts || "");
+        if (!s) return "";
+        return s.replace("T"," ").slice(0,16);
+      }
+
+
       // Registro (offline-first): salva em localStorage (fila) e mostra export
       
       async function ensureSubmitKey() {
@@ -342,9 +439,12 @@
       }
 
       async function syncQueue(opts = {}) {
-        // Evita erro de CORS quando abrir via file:// (teste local). No Pages funciona normal.
-        if (location.protocol === "file:") return;
         const { silentIfEmpty = false, showPopups = false } = opts;
+        if (IS_FILE_ORIGIN) {
+          if (badge) badge.textContent = "⚠️ Sync desativado em arquivo local (abra via https)";
+          if (showPopups) showPopup("Sync desativado", "Você está abrindo o app como arquivo local (file://). Para sincronizar sem erros de CORS, abra pelo endereço https do Pages.");
+          return;
+        }
         const q = getQueue();
         if (!q.length) {
           if (!silentIfEmpty) {
@@ -711,10 +811,46 @@ function getQueue() {
             const movs = await fetchJSON("/api/movimentacoes");
 
             const usedByCto = new Map();
-            for (const mv of movs) {
-              const id = String(mv.cto_id || "").trim();
+            // Agrupa movimentações por CTO + calcula "online" por cliente (última movimentação)
+            const tmpByCto = new Map(); // cto_id -> normalized[]
+            const lastByCtoCliente = new Map(); // cto_id -> Map(cliente -> lastMov)
+
+            for (const mv0 of movs) {
+              const nm = normalizeMov(mv0);
+              const id = String(nm.cto_id || "").trim();
               if (!id) continue;
+
               usedByCto.set(id, (usedByCto.get(id) || 0) + 1);
+
+              if (!tmpByCto.has(id)) tmpByCto.set(id, []);
+              tmpByCto.get(id).push(nm);
+
+              const cliKey = (nm.cliente || "").trim();
+              if (cliKey) {
+                if (!lastByCtoCliente.has(id)) lastByCtoCliente.set(id, new Map());
+                const mCli = lastByCtoCliente.get(id);
+                const prev = mCli.get(cliKey);
+                const useNew = !prev || (!prev.ts && nm.ts) || (prev.ts && nm.ts && String(nm.ts) > String(prev.ts));
+                if (useNew) mCli.set(cliKey, nm);
+              }
+            }
+
+            movByCto = new Map();
+            onlineClientsByCto = new Map();
+
+            for (const [id, arr] of tmpByCto.entries()) {
+              const sorted = arr.slice().sort((a,b) => String(b.ts||"").localeCompare(String(a.ts||"")));
+              movByCto.set(id, sorted);
+
+              const mCli = lastByCtoCliente.get(id) || new Map();
+              const online = [];
+              for (const [cliente, last] of mCli.entries()) {
+                const t = String(last.tipo || "").toUpperCase();
+                if (t === "DESATIVACAO") continue;
+                online.push({ cliente, last_ts: last.ts, last_tipo: last.tipo, usuario: last.usuario, obs: last.obs });
+              }
+              online.sort((a,b) => String(b.last_ts||"").localeCompare(String(a.last_ts||"")));
+              onlineClientsByCto.set(id, online);
             }
 
             const ctosGeo = {
@@ -733,6 +869,36 @@ function getQueue() {
             map.addSource("ctos", { type: "geojson", data: ctosGeo });
 
             // Ícone "X" desenhado em canvas -> ImageData (evita erro de tamanho 0)
+
+            // Glow vermelho (sombra) para CTO cheia (pct >= 1)
+            function ensureCtoGlowIcon() {
+              if (map.hasImage("cto-glow")) return;
+
+              const size = 128;
+              const c = document.createElement("canvas");
+              c.width = size; c.height = size;
+              const ctx = c.getContext("2d");
+              ctx.clearRect(0, 0, size, size);
+
+              const cx = size/2, cy = size/2;
+              const rOuter = 56;
+              const rInner = 10;
+
+              const g = ctx.createRadialGradient(cx, cy, rInner, cx, cy, rOuter);
+              g.addColorStop(0.0, "rgba(239,68,68,0.40)");
+              g.addColorStop(0.55, "rgba(239,68,68,0.18)");
+              g.addColorStop(1.0, "rgba(239,68,68,0.00)");
+
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              ctx.arc(cx, cy, rOuter, 0, Math.PI*2);
+              ctx.closePath();
+              ctx.fill();
+
+              const img = ctx.getImageData(0, 0, size, size);
+              map.addImage("cto-glow", { width: size, height: size, data: img.data });
+            }
+
             function ensureCtoXIcon() {
               if (map.hasImage("cto-x")) return;
 
@@ -756,38 +922,10 @@ function getQueue() {
               const img = ctx.getImageData(0, 0, size, size);
               map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
             }
-
-            function ensureCtoGlowIcon() {
-              if (map.hasImage("cto-glow")) return;
-
-              const size = 128;
-              const c = document.createElement("canvas");
-              c.width = size; c.height = size;
-              const ctx = c.getContext("2d");
-              ctx.clearRect(0, 0, size, size);
-
-              // Glow: radial gradient (vermelho discreto)
-              const cx = size / 2, cy = size / 2;
-              const rOuter = 56;
-              const rInner = 6;
-
-              const g = ctx.createRadialGradient(cx, cy, rInner, cx, cy, rOuter);
-              g.addColorStop(0.0, "rgba(239,68,68,0.40)");
-              g.addColorStop(0.55, "rgba(239,68,68,0.18)");
-              g.addColorStop(1.0, "rgba(239,68,68,0.00)");
-
-              ctx.fillStyle = g;
-              ctx.beginPath();
-              ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
-              ctx.closePath();
-              ctx.fill();
-
-              const img = ctx.getImageData(0, 0, size, size);
-              map.addImage("cto-glow", { width: size, height: size, data: img.data });
-            }
-
             ensureCtoXIcon();
-            ensureCtoGlowIcon();            // Layers CTO: outline preto + X colorido + blink quando cheia
+            ensureCtoGlowIcon();
+
+            // Layers CTO: outline preto + X colorido + blink quando cheia
             // Outline (preto) - sempre por baixo
             map.addLayer({
               id: "ctos-glow",
@@ -928,6 +1066,7 @@ function getQueue() {
                 map.addImage("ce-square", { width:size, height:size, data: img.data }, { sdf:true });
               }
 
+
               // CDO: triângulo vazado
               if (!map.hasImage("cdo-tri")) {
                 const size = 96;
@@ -1055,7 +1194,7 @@ function getQueue() {
             map.on("mouseenter", "rotas-layer", () => (map.getCanvas().style.cursor = "pointer"));
             map.on("mouseleave", "rotas-layer", () => (map.getCanvas().style.cursor = ""));
 
-            if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__} • OK`;
+            if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__} • OK${IS_FILE_ORIGIN ? " • (file:// sem sync)" : ""}`;
           } catch (err) {
             console.error(err);
             if (badge) badge.textContent = `ERRO: ${String(err?.message ?? err)}`;
@@ -1068,7 +1207,10 @@ function getQueue() {
       window.addEventListener("offline", onBecameOffline);
       window.addEventListener("online", onBecameOnline);
       if (!navigator.onLine) onBecameOffline();
-      setInterval(() => { if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false }); }, 45000);
+      setInterval(() => {
+        if (IS_FILE_ORIGIN) return;
+        if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false });
+      }, 45000);
 
       initMap();
     });
