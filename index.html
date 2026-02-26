@@ -227,9 +227,10 @@
 
       function wireToggles() {
         elToggleCTOs?.addEventListener("change", () => {
+          setLayerVisible("ctos-bg", elToggleCTOs.checked);
           setLayerVisible("ctos-x", elToggleCTOs.checked);
           setLayerVisible("ctos-x-blink", elToggleCTOs.checked);
-        });
+          if (elToggleCTOs.checked) { try { map.setPaintProperty("ctos-x-blink","icon-opacity",1); } catch(_){} }});
         elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
@@ -742,6 +743,20 @@ function getQueue() {
             }
             ensureCtoXIcon();
 
+            // Fundo para contraste (bolinha escura atrás do X)
+            map.addLayer({
+              id: "ctos-bg",
+              type: "circle",
+              source: "ctos",
+              paint: {
+                "circle-radius": 9,
+                "circle-color": "rgba(15,23,42,0.78)",
+                "circle-stroke-width": 1.5,
+                "circle-stroke-color": "rgba(255,255,255,0.22)",
+                "circle-opacity": 1
+              }
+            });
+
             map.addLayer({
               id: "ctos-x",
               type: "symbol",
@@ -784,6 +799,12 @@ function getQueue() {
               },
             });
 
+            // visibilidade inicial (conforme checkboxes)
+            const ctoVis0 = (elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-bg", ctoVis0);
+            setLayerVisible("ctos-x", ctoVis0);
+            setLayerVisible("ctos-x-blink", ctoVis0);
+
             // piscar só quando layer está visível
             let blinkOn = true;
             setInterval(() => {
@@ -802,7 +823,7 @@ function getQueue() {
               showSelectedSheet();
             });
 
-            // Caixas
+            // Caixas (CE/CDO) - ícones via Canvas (sem fontes)
             const caixas = await fetchJSON("/api/caixas_emenda_cdo");
             const caixasGeo = {
               type: "FeatureCollection",
@@ -813,24 +834,80 @@ function getQueue() {
               })),
             };
             map.addSource("caixas", { type: "geojson", data: caixasGeo });
+
+            function ensureCaixaIcons() {
+              // CE: quadrado
+              if (!map.hasImage("ce-square")) {
+                const size = 64;
+                const c = document.createElement("canvas");
+                c.width = size; c.height = size;
+                const ctx = c.getContext("2d");
+                ctx.clearRect(0,0,size,size);
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(14,14,size-28,size-28);
+                // recorte interno
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.fillRect(20,20,size-40,size-40);
+                ctx.globalCompositeOperation = "source-over";
+                const img = ctx.getImageData(0,0,size,size);
+                map.addImage("ce-square", { width:size, height:size, data: img.data }, { sdf:true });
+              }
+
+              // CDO: triângulo
+              if (!map.hasImage("cdo-tri")) {
+                const size = 64;
+                const c = document.createElement("canvas");
+                c.width = size; c.height = size;
+                const ctx = c.getContext("2d");
+                ctx.clearRect(0,0,size,size);
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.moveTo(size/2, 12);
+                ctx.lineTo(size-12, size-12);
+                ctx.lineTo(12, size-12);
+                ctx.closePath();
+                ctx.fill();
+                // recorte interno
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.beginPath();
+                ctx.moveTo(size/2, 20);
+                ctx.lineTo(size-20, size-20);
+                ctx.lineTo(20, size-20);
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalCompositeOperation = "source-over";
+                const img = ctx.getImageData(0,0,size,size);
+                map.addImage("cdo-tri", { width:size, height:size, data: img.data }, { sdf:true });
+              }
+            }
+            ensureCaixaIcons();
+
             map.addLayer({
               id: "caixas-layer",
-              type: "circle",
+              type: "symbol",
               source: "caixas",
-              paint: {
-                "circle-radius": 7,
-                "circle-color": [
-                  "match",
-                  ["upcase", ["to-string", ["get","tipo"]]],
-                  "CDO", "#a855f7", // roxo
-                  "CE", "#f97316",  // laranja
-                  "#60a5fa",
+              layout: {
+                "icon-image": [
+                  "case",
+                  ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
+                  "cdo-tri"
                 ],
-                "circle-stroke-width": 1,
-                "circle-stroke-color": "#000",
+                "icon-size": 0.34,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
               },
+              paint: {
+                "icon-color": [
+                  "case",
+                  ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "#f97316",  // CE laranja
+                  "#a855f7" // CDO roxo
+                ],
+                "icon-opacity": 0.95
+              }
             });
+
             setLayerVisible("caixas-layer", elToggleCaixas?.checked ?? true);
+
 
             // Rotas (GeoJSON FeatureCollection)
             const rotas = await fetchJSON("/api/rotas_fibras");
@@ -843,7 +920,7 @@ function getQueue() {
               paint: {
                 "line-color": [
                   "case",
-                  ["in","BACKBONE",["to-string",["get","tipos"]]], "#3b82f6", // backbone azul
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], "#1e40af", // backbone azul (escuro)
                   ["in","RAMAL",["to-string",["get","tipos"]]], "#000000",    // ramal preto
                   ["in","DROP",["to-string",["get","tipos"]]], "#22c55e",     // drop verde
                   "#f59e0b" // rota padrão laranja
