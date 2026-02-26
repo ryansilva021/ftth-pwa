@@ -728,15 +728,20 @@ function getQueue() {
               const c = document.createElement("canvas");
               c.width = size; c.height = size;
               const ctx = c.getContext("2d");
-              ctx.clearRect(0,0,size,size);
-              ctx.strokeStyle = "#fff";
+
+              // desenha o X em branco (SDF permite mudar cor via icon-color)
+              ctx.clearRect(0, 0, size, size);
+              ctx.strokeStyle = "#ffffff";
               ctx.lineWidth = 10;
               ctx.lineCap = "round";
               ctx.beginPath();
-              ctx.moveTo(14,14); ctx.lineTo(size-14,size-14);
-              ctx.moveTo(size-14,14); ctx.lineTo(14,size-14);
+              ctx.moveTo(14, 14); ctx.lineTo(size - 14, size - 14);
+              ctx.moveTo(size - 14, 14); ctx.lineTo(14, size - 14);
               ctx.stroke();
-              map.addImage("cto-x", c, { sdf: true });
+
+              // MapLibre às vezes falha com canvas direto; usamos ImageData (width/height explícitos)
+              const img = ctx.getImageData(0, 0, size, size);
+              map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
             }
             ensureCtoXIcon();
 
