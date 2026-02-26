@@ -796,7 +796,7 @@ function getQueue() {
               source: "ctos",
               layout: {
                 "icon-image": "cto-bg",
-                "icon-size": 0.24,
+                "icon-size": 0.18,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -851,7 +851,7 @@ function getQueue() {
               filter: [">=", ["get", "pct"], 1],
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.24,
+                "icon-size": 0.18,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -866,7 +866,7 @@ function getQueue() {
               filter: [">=", ["get", "pct"], 1],
               layout: {
                 "icon-image": "cto-x",
-                "icon-size": 0.24,
+                "icon-size": 0.18,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -914,10 +914,10 @@ function getQueue() {
                 const ctx = c.getContext("2d");
                 ctx.clearRect(0,0,size,size);
                 ctx.fillStyle = "#ffffff";
-                ctx.fillRect(14,14,size-28,size-28);
+                
                 // recorte interno
                 ctx.globalCompositeOperation = "destination-out";
-                ctx.fillRect(20,20,size-40,size-40);
+                
                 ctx.globalCompositeOperation = "source-over";
                 const img = ctx.getImageData(0,0,size,size);
                 map.addImage("ce-square", { width:size, height:size, data: img.data }, { sdf:true });
@@ -962,7 +962,7 @@ function getQueue() {
                   ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
                   "cdo-tri"
                 ],
-                "icon-size": 0.24,
+                "icon-size": 0.18,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
