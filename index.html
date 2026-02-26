@@ -8,8 +8,7 @@
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
     window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
-    window.SUBMIT_KEY = "1Qaz2wsX3edc";
-    window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
+window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
   </script>
 
@@ -46,7 +45,6 @@
       border:1px solid var(--border);border-radius:999px;padding:8px 12px;
       min-height:40px;
     }
-    button.chip{cursor:pointer}
     .chip input{transform:scale(1.2); accent-color: var(--ok);}
     #map{width:100vw;height:calc(100vh - 64px);}
 
@@ -114,9 +112,99 @@
       line-height:1.35 !important;
       max-width: 80vw !important;
     }
-  </style>
+  
+    /* Login overlay */
+    .login-screen{
+      position:fixed; inset:0;
+      display:none;
+      align-items:center; justify-content:center;
+      background:rgba(2,6,23,.82);
+      backdrop-filter: blur(10px);
+      z-index:99999;
+      padding:24px;
+    }
+    .login-screen.show{ display:flex; }
+    .login-card{
+      width:min(380px, 92vw);
+      border-radius:18px;
+      padding:18px 16px 14px;
+      background: linear-gradient(180deg, rgba(17,24,39,.92), rgba(2,6,23,.92));
+      border:1px solid rgba(148,163,184,.18);
+      box-shadow:0 20px 70px rgba(0,0,0,.55);
+    }
+    .login-title{ color:#fff; font-weight:900; font-size:18px; letter-spacing:.2px; }
+    .login-sub{ color:rgba(226,232,240,.78); margin:6px 0 14px; font-size:13px; }
+    .login-label{ display:block; color:rgba(226,232,240,.82); font-size:12px; margin:10px 0 6px; }
+    .login-input{
+      width:100%;
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid rgba(148,163,184,.18);
+      background:rgba(15,23,42,.65);
+      color:#fff;
+      outline:none;
+      font-size:14px;
+    }
+    .login-input:focus{ border-color: rgba(59,130,246,.5); box-shadow:0 0 0 4px rgba(59,130,246,.18); }
+    .login-btn{
+      margin-top:14px;
+      width:100%;
+      padding:12px 12px;
+      border:none;
+      border-radius:14px;
+      background: linear-gradient(180deg, rgba(34,197,94,1), rgba(22,163,74,1));
+      color:#04110a;
+      font-weight:900;
+      font-size:14px;
+      cursor:pointer;
+      box-shadow:0 10px 30px rgba(34,197,94,.25);
+    }
+    .login-btn:active{ transform: translateY(1px); }
+    .login-error{ min-height:18px; margin-top:10px; color:#fca5a5; font-size:12px; text-align:center; }
+
+    header .right{ display:flex; align-items:center; gap:10px; }
+    .userpill{
+      display:flex; align-items:center; gap:6px;
+      padding:8px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      color: rgba(255,255,255,.90);
+      font-size:12px;
+      white-space:nowrap;
+    }
+    .logoutBtn{
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(239,68,68,.12);
+      color: rgba(255,255,255,.92);
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
+    }
+    .logoutBtn:hover{ filter:brightness(1.08); }
+</style>
 </head>
 <body>
+
+  <!-- LOGIN OVERLAY -->
+  <div id="login-screen" class="login-screen" aria-hidden="true">
+    <div class="login-card">
+      <div class="login-title">FTTH • Login</div>
+      <div class="login-sub">Entre para acessar o mapa</div>
+
+      <label class="login-label" for="login-user">Usuário</label>
+      <input id="login-user" class="login-input" autocomplete="username" placeholder="ex: admin" />
+
+      <label class="login-label" for="login-pass">Senha</label>
+      <input id="login-pass" class="login-input" type="password" autocomplete="current-password" placeholder="••••••••" />
+
+      <button id="login-btn" class="login-btn">Entrar</button>
+      <div id="login-error" class="login-error"></div>
+    </div>
+  </div>
+
   <header>
     <div class="left">
       <div><b>🗺️ FTTH</b></div>
@@ -125,9 +213,11 @@
         <label class="chip"><input id="toggleCTOs" type="checkbox" checked /> CTOs</label>
         <label class="chip"><input id="toggleCaixas" type="checkbox" checked /> Caixas</label>
         <label class="chip"><input id="toggleRotas" type="checkbox" checked /> Rotas</label>
-        <button class="chip" id="btnLogin" type="button">🔐 Entrar</button>
-  <button class="chip" id="btnLogout" type="button" style="display:none;">🚪 Sair</button>
-</div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="userpill" id="userPill">👤 <span id="userName">—</span></div>
+      <button class="logoutBtn" id="btnLogout" title="Sair">Sair</button>
     </div>
   </header>
 
@@ -254,8 +344,143 @@
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
 
-      async function fetchJSON(path) {
-        const res = await fetch(`${window.WORKER_URL}${path}`);
+      
+      // =========================
+      // AUTH (Login via Worker)
+      // =========================
+      const AUTH_TOKEN_KEY = "ftth_token";
+      const AUTH_USER_KEY  = "ftth_auth_user";
+
+      function getAuthToken(){ return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
+      function getAuthUser(){ return localStorage.getItem(AUTH_USER_KEY) || ""; }
+
+      function setAuth(token, user){
+        if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+        if (user)  localStorage.setItem(AUTH_USER_KEY, user);
+      }
+
+      function clearAuth(){
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        // mantém o nome do user salvo para facilitar o próximo login
+      }
+
+      function showLogin(msg){
+        const el = document.getElementById("login-screen");
+        const err = document.getElementById("login-error");
+        if (err) err.textContent = msg || "";
+        if (el) {
+          el.classList.add("show");
+          el.setAttribute("aria-hidden", "false");
+        }
+        // Prefill
+        const u = document.getElementById("login-user");
+        if (u && !u.value) u.value = getAuthUser() || localStorage.getItem("ftth_user") || "";
+        setTimeout(()=> document.getElementById("login-user")?.focus(), 50);
+      }
+
+      function hideLogin(){
+        const el = document.getElementById("login-screen");
+        const err = document.getElementById("login-error");
+        if (err) err.textContent = "";
+        if (el) {
+          el.classList.remove("show");
+          el.setAttribute("aria-hidden", "true");
+        }
+      }
+
+      function authHeaders(extra={}){
+        const t = getAuthToken();
+        const h = { ...extra };
+        if (t) h["Authorization"] = "Bearer " + t;
+        return h;
+      }
+
+      async function authFetch(url, opts={}){
+        const headers = authHeaders(opts.headers || {});
+        const res = await fetch(url, { ...opts, headers });
+        if (res.status === 401){
+          // token inválido/expirado
+          clearAuth();
+          showLogin("Sessão expirada. Faça login novamente.");
+        }
+        return res;
+      }
+
+      async function doLogin(){
+        const btn = document.getElementById("login-btn");
+        const err = document.getElementById("login-error");
+        const uEl = document.getElementById("login-user");
+        const pEl = document.getElementById("login-pass");
+
+        const user = (uEl?.value || "").trim();
+        const password = (pEl?.value || "").trim();
+
+        if (!user || !password){
+          if (err) err.textContent = "Informe usuário e senha.";
+          return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = "Entrando..."; }
+        if (err) err.textContent = "";
+
+        try{
+          const res = await fetch(`${window.WORKER_URL}/api/login`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ user, password })
+          });
+          const data = await res.json().catch(()=> ({}));
+          if (data && data.ok && data.token){
+            setAuth(data.token, user);
+            // mantém compat com fluxo antigo
+            localStorage.setItem("ftth_user", user);
+            hideLogin();
+            const el = document.getElementById('userName');
+            if (el) el.textContent = user;
+            // inicia app
+            if (!window.__APP_STARTED__){
+              window.__APP_STARTED__ = true;
+              document.getElementById("login-btn")?.addEventListener("click", doLogin);
+      document.getElementById("login-pass")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+      document.getElementById("login-user")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+
+      // Start only if authenticated
+      if (!checkAuthOrShowLogin()) return;
+      window.__APP_STARTED__ = true;
+      initMap();
+            }
+            // limpa senha do campo
+            if (pEl) pEl.value = "";
+          } else {
+            if (err) err.textContent = "Usuário ou senha inválidos.";
+          }
+        }catch(e){
+          if (err) err.textContent = "Falha ao conectar. Verifique sua internet.";
+        } finally{
+          if (btn) { btn.disabled = false; btn.textContent = "Entrar"; }
+        }
+      }
+
+      function doLogout(){
+        clearAuth();
+        showLogin("Você saiu. Faça login para continuar.");
+      }
+
+      function checkAuthOrShowLogin(){
+        const token = getAuthToken();
+        if (!token){
+          showLogin("");
+          return false;
+        }
+        hideLogin();
+        const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+        const el = document.getElementById('userName');
+        if (el) el.textContent = u;
+        return true;
+      }
+
+async function fetchJSON(path) {
+        const res = await authFetch(`${window.WORKER_URL}${path}`);
         if (!res.ok) throw new Error(`${path} -> ${res.status}`);
         return await res.json();
       }
@@ -399,103 +624,6 @@
           .replaceAll("'", "&#039;");
       }
 
-      // =========================
-      // AUTH (D1-backed on Worker)
-      // =========================
-      function getAuth() {
-        try { return JSON.parse(localStorage.getItem("ftth_auth") || "null"); } catch { return null; }
-      }
-      function setAuth(auth) {
-        if (!auth) localStorage.removeItem("ftth_auth");
-        else localStorage.setItem("ftth_auth", JSON.stringify(auth));
-      }
-      function isAuthed() {
-        const a = getAuth();
-        return !!(a && a.token && a.user);
-      }
-      function authHeader() {
-        const a = getAuth();
-        return a?.token ? { "authorization": `Bearer ${a.token}` } : {};
-      }
-      async function apiFetch(path, opts = {}) {
-        const headers = { ...(opts.headers || {}), ...(authHeader()) };
-        return fetch(`${window.WORKER_URL}${path}`, { ...opts, headers });
-      }
-      function refreshAuthUI() {
-        const a = getAuth();
-        const on = !!a?.token;
-        const btnLogin = document.getElementById("btnLogin");
-        const btnLogout = document.getElementById("btnLogout");
-        if (btnLogin) btnLogin.style.display = on ? "none" : "inline-flex";
-        if (btnLogout) btnLogout.style.display = on ? "inline-flex" : "none";
-        if (badge) badge.textContent = on ? `🟢 Logado: ${a.user}` : `BUILD: ${window.__BUILD_ID__} • OK${(typeof IS_FILE_ORIGIN !== "undefined" && IS_FILE_ORIGIN) ? " • (file:// sem sync)" : ""}`;
-      }
-
-      function openLogin(reason = "") {
-        const msg = reason ? `<div class="hint">⚠️ ${escapeHTML(reason)}</div>` : "";
-        openSheet("Entrar", "Faça login para registrar e sincronizar.", `
-          ${msg}
-          <div class="field">
-            <label>Usuário</label>
-            <input id="lg_user" placeholder="ex: ryan" />
-          </div>
-          <div class="field">
-            <label>Senha / PIN</label>
-            <input id="lg_pin" type="password" placeholder="••••••" />
-          </div>
-          <div class="btnRow">
-            <button class="btn btnPrimary" id="lg_go">✅ Entrar</button>
-            <button class="btn" id="lg_cancel">Cancelar</button>
-          </div>
-          <div class="hint">O login fica salvo neste aparelho.</div>
-        `);
-
-        const savedUser = (getAuth()?.user || localStorage.getItem("ftth_user") || "");
-        const u = document.getElementById("lg_user");
-        const p = document.getElementById("lg_pin");
-        if (u) u.value = savedUser;
-
-        document.getElementById("lg_cancel").onclick = closeSheet;
-
-        document.getElementById("lg_go").onclick = async () => {
-          const user = (u?.value || "").trim();
-          const pin = (p?.value || "").trim();
-          if (!user || !pin) return showPopup("Faltou algo", "Informe usuário e senha/PIN.");
-
-          try {
-            if (badge) badge.textContent = "🔐 Entrando...";
-            const res = await fetch(`${window.WORKER_URL}/api/login`, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ user, password: pin })
-            });
-            const data = await res.json().catch(() => null);
-            if (!res.ok || !data?.ok || !data?.token) throw new Error(data?.error || `HTTP ${res.status}`);
-
-            setAuth({ user, token: data.token, ts: new Date().toISOString() });
-            localStorage.setItem("ftth_user", user);
-            closeSheet();
-            refreshAuthUI();
-          } catch (e) {
-            console.error(e);
-            if (badge) badge.textContent = "🔴 Login falhou";
-            showPopup("Login falhou", escapeHTML(String(e?.message || e)));
-          }
-        };
-      }
-
-      async function logout() {
-        const a = getAuth();
-        setAuth(null);
-        refreshAuthUI();
-        try {
-          if (a?.token) await fetch(`${window.WORKER_URL}/api/logout`, { method: "POST", headers: { ...(authHeader()) } });
-        } catch {}
-        showPopup("Sessão encerrada", "Você saiu do app neste aparelho.");
-      }
-
-
-
       function normTs(v) {
         const s = String(v ?? "").trim();
         if (!s) return "";
@@ -559,6 +687,14 @@
           if (showPopups) onBecameOffline();
           return;
         }
+
+        const key = await ensureSubmitKey();
+        if (!key) {
+          if (badge) badge.textContent = "Sync cancelado (sem chave)";
+          if (showPopups) showPopup("Chave ausente", "SUBMIT_KEY não configurada no app.");
+          return;
+        }
+
         let sent = 0;
         let failed = 0;
         const nextQueue = [];
@@ -568,12 +704,13 @@
         for (let i = 0; i < q.length; i++) {
           const item = q[i];
           try {
-            const res = await apiFetch("/api/submit", {
+            const res = await fetch(`${window.WORKER_URL}/api/submit`, {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              headers: authHeaders({ "content-type": "application/json" }),
               body: JSON.stringify({ items: [item] })
             });
-const txt = await res.text();
+
+            const txt = await res.text();
             let data = null;
             try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
 
@@ -668,7 +805,7 @@ function getQueue() {
           <div class="field">
             <label>Usuário</label>
             <input id="f_user" placeholder="ex: ryan" />
-            <div class="hint">Dica: fica salvo no aparelho.</div>
+            <div class="hint">Se estiver logado, o usuário é preenchido automaticamente.</div>
           </div>
 
           ${kind === "MOVIMENTACOES" ? `
@@ -727,8 +864,10 @@ function getQueue() {
         openSheet(title, subtitle, body);
 
         // Prefill user remembered
-        const savedUser = (getAuth()?.user || localStorage.getItem("ftth_user") || "");
-        const elUser = document.getElementById("f_user");
+        const savedUser = localStorage.getItem("ftth_user") || "";
+        
+            const authUser = (typeof getAuthUser==="function" ? getAuthUser() : "");
+const elUser = document.getElementById("f_user");
         if (elUser) elUser.value = savedUser;
 
         document.getElementById("btnSave").onclick = () => {
@@ -870,11 +1009,6 @@ function getQueue() {
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
         wireToggles();
-
-        // Auth buttons
-        btnLogin?.addEventListener("click", () => openLogin());
-        btnLogout?.addEventListener("click", () => logout());
-        refreshAuthUI();
 
         btnGPS.addEventListener("click", () => {
           startGPS();
@@ -1308,6 +1442,13 @@ function getQueue() {
         if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false });
       }, 45000);
 
+      document.getElementById("login-btn")?.addEventListener("click", doLogin);
+      document.getElementById("login-pass")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+      document.getElementById("login-user")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+
+      // Start only if authenticated
+      if (!checkAuthOrShowLogin()) return;
+      window.__APP_STARTED__ = true;
       initMap();
     });
   </script>
