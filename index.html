@@ -226,11 +226,11 @@
       }
 
       function wireToggles() {
-        elToggleCTOs?.addEventListener("change", () => {
-          setLayerVisible("ctos-bg", elToggleCTOs.checked);
-          setLayerVisible("ctos-x", elToggleCTOs.checked);
-          setLayerVisible("ctos-x-blink", elToggleCTOs.checked);
-          if (elToggleCTOs.checked) { try { map.setPaintProperty("ctos-x-blink","icon-opacity",1); } catch(_){} }});
+        elToggleCTOs?.addEventListener("change", () => {setLayerVisible("ctos-x-outline", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink-outline", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
+if (elToggleCTOs.checked) { try { map.setPaintProperty("ctos-x-blink","icon-opacity",1); } catch(_){} }});
         elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
@@ -725,103 +725,135 @@ function getQueue() {
 
             // Ícone "X" desenhado em canvas -> ImageData (evita erro de tamanho 0)
             function ensureCtoXIcon() {
-              if (map.hasImage("cto-x")) return;
+              // cria 2 ícones: outline preto (fixo) + X branco SDF (colorido via icon-color)
+              if (map.hasImage("cto-x-sdf") && map.hasImage("cto-x-outline")) return;
+
               const size = 64;
-              const c = document.createElement("canvas");
-              c.width = size; c.height = size;
-              const ctx = c.getContext("2d");
-              ctx.clearRect(0, 0, size, size);
-              ctx.strokeStyle = "#ffffff";
-              ctx.lineWidth = 10;
-              ctx.lineCap = "round";
-              ctx.beginPath();
-              ctx.moveTo(14, 14); ctx.lineTo(size - 14, size - 14);
-              ctx.moveTo(size - 14, 14); ctx.lineTo(14, size - 14);
-              ctx.stroke();
-              const img = ctx.getImageData(0, 0, size, size);
-              map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
+
+              function drawX(lineWidth, strokeStyle) {
+                const c = document.createElement("canvas");
+                c.width = size; c.height = size;
+                const ctx = c.getContext("2d");
+                ctx.clearRect(0, 0, size, size);
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = lineWidth;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(14, 14); ctx.lineTo(size - 14, size - 14);
+                ctx.moveTo(size - 14, 14); ctx.lineTo(14, size - 14);
+                ctx.stroke();
+                const img = ctx.getImageData(0, 0, size, size);
+                return { width: size, height: size, data: img.data };
+              }
+
+              // outline preto um pouco mais grosso
+              if (!map.hasImage("cto-x-outline")) {
+                map.addImage("cto-x-outline", drawX(14, "#000000"));
+              }
+
+              // base branca SDF (vai ser recolorida)
+              if (!map.hasImage("cto-x-sdf")) {
+                map.addImage("cto-x-sdf", drawX(10, "#ffffff"), { sdf: true });
+              }
             }
             ensureCtoXIcon();
 
             // Fundo para contraste (bolinha escura atrás do X)
+            // Layers CTO (X com outline preto e cor por ocupação)
+            // Outline base (preto)
             map.addLayer({
-              id: "ctos-bg",
-              type: "circle",
+              id: "ctos-x-outline",
+              type: "symbol",
               source: "ctos",
+              layout: {
+                "icon-image": "cto-x-outline",
+                "icon-size": 0.44,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
               paint: {
-                "circle-radius": 9,
-                "circle-color": "rgba(15,23,42,0.78)",
-                "circle-stroke-width": 1.5,
-                "circle-stroke-color": "rgba(255,255,255,0.22)",
-                "circle-opacity": 1
+                "icon-opacity": 1
               }
             });
 
+            // X colorido (SDF)
             map.addLayer({
               id: "ctos-x",
               type: "symbol",
               source: "ctos",
               layout: {
-                "icon-image": "cto-x",
-                "icon-size": 0.42,
+                "icon-image": "cto-x-sdf",
+                "icon-size": 0.36,
                 "icon-allow-overlap": true,
-                "icon-ignore-placement": true,
+                "icon-ignore-placement": true
               },
               paint: {
                 "icon-color": [
                   "case",
                   [">=", ["get", "pct"], 1], "#ef4444",
                   [">=", ["get", "pct"], 0.7], "#f59e0b",
-                  "#22c55e",
+                  "#22c55e"
                 ],
-                "icon-halo-color": "rgba(0,0,0,0.90)",
-                "icon-halo-width": 2,
-                "icon-opacity": 1,
-              },
+                "icon-opacity": 1
+              }
             });
 
+            // Blink (outline) só CTO cheia
+            map.addLayer({
+              id: "ctos-x-blink-outline",
+              type: "symbol",
+              source: "ctos",
+              filter: [">=", ["get", "pct"], 1],
+              layout: {
+                "icon-image": "cto-x-outline",
+                "icon-size": 0.54,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: { "icon-opacity": 1 }
+            });
+
+            // Blink (colorido) só CTO cheia
             map.addLayer({
               id: "ctos-x-blink",
               type: "symbol",
               source: "ctos",
               filter: [">=", ["get", "pct"], 1],
               layout: {
-                "icon-image": "cto-x",
-                "icon-size": 0.52,
+                "icon-image": "cto-x-sdf",
+                "icon-size": 0.46,
                 "icon-allow-overlap": true,
-                "icon-ignore-placement": true,
+                "icon-ignore-placement": true
               },
               paint: {
                 "icon-color": "#ef4444",
-                "icon-halo-color": "rgba(0,0,0,0.95)",
-                "icon-halo-width": 3,
-                "icon-opacity": 1,
-              },
+                "icon-opacity": 1
+              }
             });
 
-            // visibilidade inicial (conforme checkboxes)
-            const ctoVis0 = (elToggleCTOs?.checked ?? true);
-            setLayerVisible("ctos-bg", ctoVis0);
-            setLayerVisible("ctos-x", ctoVis0);
-            setLayerVisible("ctos-x-blink", ctoVis0);
-
-            // piscar só quando layer está visível
+            // animação piscar (opacidade) - aplica nas duas layers de blink
             let blinkOn = true;
             setInterval(() => {
               try {
+                // só pisca se a layer estiver visível
                 const vis = map.getLayoutProperty("ctos-x-blink", "visibility");
-                if (vis !== "visible") return;
+                if (vis === "none") return;
+
                 blinkOn = !blinkOn;
-                map.setPaintProperty("ctos-x-blink", "icon-opacity", blinkOn ? 1 : 0.2);
+                const op = blinkOn ? 1 : 0.2;
+                map.setPaintProperty("ctos-x-blink", "icon-opacity", op);
+                map.setPaintProperty("ctos-x-blink-outline", "icon-opacity", op);
               } catch (_) {}
             }, 650);
 
+            // Click: selecionar CTO
             map.on("click", "ctos-x", (e) => {
               const f = e.features?.[0];
               if (!f) return;
               selected = { type: "cto", props: f.properties };
               showSelectedSheet();
             });
+});
 
             // Caixas (CE/CDO) - ícones via Canvas (sem fontes)
             const caixas = await fetchJSON("/api/caixas_emenda_cdo");
