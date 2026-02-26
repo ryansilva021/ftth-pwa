@@ -226,11 +226,13 @@
       }
 
       function wireToggles() {
-        elToggleCTOs?.addEventListener("change", () => {setLayerVisible("ctos-x-outline", elToggleCTOs?.checked ?? true);
-            setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
-            setLayerVisible("ctos-x-blink-outline", elToggleCTOs?.checked ?? true);
-            setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
-if (elToggleCTOs.checked) { try { map.setPaintProperty("ctos-x-blink","icon-opacity",1); } catch(_){} }});
+        elToggleCTOs?.addEventListener("change", () => {
+          const on = elToggleCTOs.checked;
+          setLayerVisible("ctos-x-outline", on);
+          setLayerVisible("ctos-x", on);
+          setLayerVisible("ctos-x-blink-outline", on);
+          setLayerVisible("ctos-x-blink", on);
+        });
         elToggleCaixas?.addEventListener("change", () => setLayerVisible("caixas-layer", elToggleCaixas.checked));
         elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
       }
@@ -618,7 +620,7 @@ function getQueue() {
             setLastGPS(lng, lat, acc);
 
             if (!userMarker) {
-              userMarker = new maplibregl.Marker({ color: "#3b82f6" })
+              userMarker = new maplibregl.Marker({ color: "#1e3a8a" })
                 .setLngLat([lng, lat])
                 .addTo(map);
             } else {
@@ -725,65 +727,63 @@ function getQueue() {
 
             // Ícone "X" desenhado em canvas -> ImageData (evita erro de tamanho 0)
             function ensureCtoXIcon() {
-              // cria 2 ícones: outline preto (fixo) + X branco SDF (colorido via icon-color)
-              if (map.hasImage("cto-x-sdf") && map.hasImage("cto-x-outline")) return;
+              if (map.hasImage("cto-x")) return;
 
-              const size = 64;
+              // High-res canvas for smoother icon (mobile)
+              const size = 128;
+              const c = document.createElement("canvas");
+              c.width = size; c.height = size;
+              const ctx = c.getContext("2d");
 
-              function drawX(lineWidth, strokeStyle) {
-                const c = document.createElement("canvas");
-                c.width = size; c.height = size;
-                const ctx = c.getContext("2d");
-                ctx.clearRect(0, 0, size, size);
-                ctx.strokeStyle = strokeStyle;
-                ctx.lineWidth = lineWidth;
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(14, 14); ctx.lineTo(size - 14, size - 14);
-                ctx.moveTo(size - 14, 14); ctx.lineTo(14, size - 14);
-                ctx.stroke();
-                const img = ctx.getImageData(0, 0, size, size);
-                return { width: size, height: size, data: img.data };
-              }
+              ctx.clearRect(0, 0, size, size);
 
-              // outline preto um pouco mais grosso
-              if (!map.hasImage("cto-x-outline")) {
-                map.addImage("cto-x-outline", drawX(14, "#000000"));
-              }
+              // Clean "X" with rounded caps
+              const pad = 28;
+              const x1 = pad, y1 = pad;
+              const x2 = size - pad, y2 = size - pad;
 
-              // base branca SDF (vai ser recolorida)
-              if (!map.hasImage("cto-x-sdf")) {
-                map.addImage("cto-x-sdf", drawX(10, "#ffffff"), { sdf: true });
-              }
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 18;
+              ctx.lineCap = "round";
+              ctx.lineJoin = "round";
+
+              ctx.beginPath();
+              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+              ctx.moveTo(x2, y1); ctx.lineTo(x1, y2);
+              ctx.stroke();
+
+              // MapLibre: use explicit ImageData to avoid mismatched image size bugs
+              const img = ctx.getImageData(0, 0, size, size);
+              map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
             }
             ensureCtoXIcon();
 
-            // Fundo para contraste (bolinha escura atrás do X)
-            // Layers CTO (X com outline preto e cor por ocupação)
-            // Outline base (preto)
+            // Layers CTO: outline preto + X colorido + blink quando cheia
+            // Outline (preto) - sempre por baixo
             map.addLayer({
               id: "ctos-x-outline",
               type: "symbol",
               source: "ctos",
               layout: {
-                "icon-image": "cto-x-outline",
-                "icon-size": 0.44,
+                "icon-image": "cto-x",
+                "icon-size": 0.24,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
               paint: {
-                "icon-opacity": 1
+                "icon-color": "#000000",
+                "icon-opacity": 0.90
               }
             });
 
-            // X colorido (SDF)
+            // X colorido (por ocupação)
             map.addLayer({
               id: "ctos-x",
               type: "symbol",
               source: "ctos",
               layout: {
-                "icon-image": "cto-x-sdf",
-                "icon-size": 0.36,
+                "icon-image": "cto-x",
+                "icon-size": 0.21,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
@@ -798,64 +798,56 @@ function getQueue() {
               }
             });
 
-            // Blink (outline) só CTO cheia
+            // Blink outline (preto) só CTO cheia
             map.addLayer({
               id: "ctos-x-blink-outline",
               type: "symbol",
               source: "ctos",
               filter: [">=", ["get", "pct"], 1],
               layout: {
-                "icon-image": "cto-x-outline",
-                "icon-size": 0.54,
+                "icon-image": "cto-x",
+                "icon-size": 0.27,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
-              paint: { "icon-opacity": 1 }
+              paint: { "icon-color": "#000000", "icon-opacity": 0.85 }
             });
 
-            // Blink (colorido) só CTO cheia
+            // Blink colorido (vermelho) só CTO cheia
             map.addLayer({
               id: "ctos-x-blink",
               type: "symbol",
               source: "ctos",
               filter: [">=", ["get", "pct"], 1],
               layout: {
-                "icon-image": "cto-x-sdf",
-                "icon-size": 0.46,
+                "icon-image": "cto-x",
+                "icon-size": 0.24,
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true
               },
-              paint: {
-                "icon-color": "#ef4444",
-                "icon-opacity": 1
-              }
+              paint: { "icon-color": "#ef4444", "icon-opacity": 1 }
             });
 
-            // animação piscar (opacidade) - aplica nas duas layers de blink
+            // animação piscar (opacidade) - só se visível
             let blinkOn = true;
             setInterval(() => {
               try {
-                // só pisca se a layer estiver visível
                 const vis = map.getLayoutProperty("ctos-x-blink", "visibility");
                 if (vis === "none") return;
-
                 blinkOn = !blinkOn;
-                const op = blinkOn ? 1 : 0.2;
-                map.setPaintProperty("ctos-x-blink", "icon-opacity", op);
-                map.setPaintProperty("ctos-x-blink-outline", "icon-opacity", op);
+                map.setPaintProperty("ctos-x-blink", "icon-opacity", blinkOn ? 1 : 0.2);
+                map.setPaintProperty("ctos-x-blink-outline", "icon-opacity", blinkOn ? 0.85 : 0.15);
               } catch (_) {}
             }, 650);
 
-            // Click: selecionar CTO
-            map.on("click", "ctos-x", (e) => {
-              const f = e.features?.[0];
-              if (!f) return;
-              selected = { type: "cto", props: f.properties };
-              showSelectedSheet();
-            });
-});
+            // Visibilidade inicial conforme toggle
+            setLayerVisible("ctos-x-outline", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink-outline", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
 
-            // Caixas (CE/CDO) - ícones via Canvas (sem fontes)
+
+// Caixas (CE/CDO) - ícones via Canvas (sem fontes)
             const caixas = await fetchJSON("/api/caixas_emenda_cdo");
             const caixasGeo = {
               type: "FeatureCollection",
