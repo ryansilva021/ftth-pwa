@@ -46,6 +46,7 @@
       border:1px solid var(--border);border-radius:999px;padding:8px 12px;
       min-height:40px;
     }
+    button.chip{cursor:pointer}
     .chip input{transform:scale(1.2); accent-color: var(--ok);}
     #map{width:100vw;height:calc(100vh - 64px);}
 
@@ -124,7 +125,9 @@
         <label class="chip"><input id="toggleCTOs" type="checkbox" checked /> CTOs</label>
         <label class="chip"><input id="toggleCaixas" type="checkbox" checked /> Caixas</label>
         <label class="chip"><input id="toggleRotas" type="checkbox" checked /> Rotas</label>
-      </div>
+        <button class="chip" id="btnLogin" type="button">🔐 Entrar</button>
+  <button class="chip" id="btnLogout" type="button" style="display:none;">🚪 Sair</button>
+</div>
     </div>
   </header>
 
@@ -396,6 +399,103 @@
           .replaceAll("'", "&#039;");
       }
 
+      // =========================
+      // AUTH (D1-backed on Worker)
+      // =========================
+      function getAuth() {
+        try { return JSON.parse(localStorage.getItem("ftth_auth") || "null"); } catch { return null; }
+      }
+      function setAuth(auth) {
+        if (!auth) localStorage.removeItem("ftth_auth");
+        else localStorage.setItem("ftth_auth", JSON.stringify(auth));
+      }
+      function isAuthed() {
+        const a = getAuth();
+        return !!(a && a.token && a.user);
+      }
+      function authHeader() {
+        const a = getAuth();
+        return a?.token ? { "authorization": `Bearer ${a.token}` } : {};
+      }
+      async function apiFetch(path, opts = {}) {
+        const headers = { ...(opts.headers || {}), ...(authHeader()) };
+        return fetch(`${window.WORKER_URL}${path}`, { ...opts, headers });
+      }
+      function refreshAuthUI() {
+        const a = getAuth();
+        const on = !!a?.token;
+        const btnLogin = document.getElementById("btnLogin");
+        const btnLogout = document.getElementById("btnLogout");
+        if (btnLogin) btnLogin.style.display = on ? "none" : "inline-flex";
+        if (btnLogout) btnLogout.style.display = on ? "inline-flex" : "none";
+        if (badge) badge.textContent = on ? `🟢 Logado: ${a.user}` : `BUILD: ${window.__BUILD_ID__} • OK${(typeof IS_FILE_ORIGIN !== "undefined" && IS_FILE_ORIGIN) ? " • (file:// sem sync)" : ""}`;
+      }
+
+      function openLogin(reason = "") {
+        const msg = reason ? `<div class="hint">⚠️ ${escapeHTML(reason)}</div>` : "";
+        openSheet("Entrar", "Faça login para registrar e sincronizar.", `
+          ${msg}
+          <div class="field">
+            <label>Usuário</label>
+            <input id="lg_user" placeholder="ex: ryan" />
+          </div>
+          <div class="field">
+            <label>Senha / PIN</label>
+            <input id="lg_pin" type="password" placeholder="••••••" />
+          </div>
+          <div class="btnRow">
+            <button class="btn btnPrimary" id="lg_go">✅ Entrar</button>
+            <button class="btn" id="lg_cancel">Cancelar</button>
+          </div>
+          <div class="hint">O login fica salvo neste aparelho.</div>
+        `);
+
+        const savedUser = (getAuth()?.user || localStorage.getItem("ftth_user") || "");
+        const u = document.getElementById("lg_user");
+        const p = document.getElementById("lg_pin");
+        if (u) u.value = savedUser;
+
+        document.getElementById("lg_cancel").onclick = closeSheet;
+
+        document.getElementById("lg_go").onclick = async () => {
+          const user = (u?.value || "").trim();
+          const pin = (p?.value || "").trim();
+          if (!user || !pin) return showPopup("Faltou algo", "Informe usuário e senha/PIN.");
+
+          try {
+            if (badge) badge.textContent = "🔐 Entrando...";
+            const res = await fetch(`${window.WORKER_URL}/api/login`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ user, password: pin })
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.ok || !data?.token) throw new Error(data?.error || `HTTP ${res.status}`);
+
+            setAuth({ user, token: data.token, ts: new Date().toISOString() });
+            localStorage.setItem("ftth_user", user);
+            closeSheet();
+            refreshAuthUI();
+          } catch (e) {
+            console.error(e);
+            if (badge) badge.textContent = "🔴 Login falhou";
+            showPopup("Login falhou", escapeHTML(String(e?.message || e)));
+          }
+        };
+      }
+
+      async function logout() {
+        const a = getAuth();
+        setAuth(null);
+        refreshAuthUI();
+        try {
+          if (a?.token) await fetch(`${window.WORKER_URL}/api/logout`, { method: "POST", headers: { ...(authHeader()) } });
+        } catch {}
+        showPopup("Sessão encerrada", "Você saiu do app neste aparelho.");
+      }
+
+
+
       function normTs(v) {
         const s = String(v ?? "").trim();
         if (!s) return "";
@@ -459,14 +559,6 @@
           if (showPopups) onBecameOffline();
           return;
         }
-
-        const key = await ensureSubmitKey();
-        if (!key) {
-          if (badge) badge.textContent = "Sync cancelado (sem chave)";
-          if (showPopups) showPopup("Chave ausente", "SUBMIT_KEY não configurada no app.");
-          return;
-        }
-
         let sent = 0;
         let failed = 0;
         const nextQueue = [];
@@ -476,13 +568,12 @@
         for (let i = 0; i < q.length; i++) {
           const item = q[i];
           try {
-            const res = await fetch(`${window.WORKER_URL}/api/submit`, {
+            const res = await apiFetch("/api/submit", {
               method: "POST",
-              headers: { "content-type": "application/json", "x-ftth-key": key },
+              headers: { "content-type": "application/json" },
               body: JSON.stringify({ items: [item] })
             });
-
-            const txt = await res.text();
+const txt = await res.text();
             let data = null;
             try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
 
@@ -636,7 +727,7 @@ function getQueue() {
         openSheet(title, subtitle, body);
 
         // Prefill user remembered
-        const savedUser = localStorage.getItem("ftth_user") || "";
+        const savedUser = (getAuth()?.user || localStorage.getItem("ftth_user") || "");
         const elUser = document.getElementById("f_user");
         if (elUser) elUser.value = savedUser;
 
@@ -779,6 +870,11 @@ function getQueue() {
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
         wireToggles();
+
+        // Auth buttons
+        btnLogin?.addEventListener("click", () => openLogin());
+        btnLogout?.addEventListener("click", () => logout());
+        refreshAuthUI();
 
         btnGPS.addEventListener("click", () => {
           startGPS();
