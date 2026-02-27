@@ -354,23 +354,11 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
 
       function getAuthToken(){ return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
       function getAuthUser(){ return localStorage.getItem(AUTH_USER_KEY) || ""; }
-      function getAuthRole(){ return localStorage.getItem(AUTH_ROLE_KEY) || "user"; }
 
-      function setAuth(token, user, role){
+      function setAuth(token, user){
         if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
         if (user)  localStorage.setItem(AUTH_USER_KEY, user);
-        if (role)  localStorage.setItem(AUTH_ROLE_KEY, role);
       }
-function applyPermissionsToUI(){
-  const role = getAuthRole();
-  const isAdmin = role === "admin";
-  document.documentElement.dataset.role = role;
-  // Esconde/desabilita tudo marcado como admin-only (se existir no HTML)
-  document.querySelectorAll("[data-requires-admin]").forEach((el)=>{
-    el.style.display = isAdmin ? "" : "none";
-  });
-}
-
 
       function clearAuth(){
         localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -419,18 +407,27 @@ function applyPermissionsToUI(){
         return res;
       }
 
-async function fetchMeRole(){
+      async function doLogout(){
   try{
-    const res = await authFetch(`${window.WORKER_URL}/api/me`);
-    if (!res.ok) return null;
-    const data = await res.json().catch(()=>null);
-    const role = String(data?.role || "user");
-    localStorage.setItem(AUTH_ROLE_KEY, role);
-    return role;
-  }catch(_){ return null; }
+    const token = getAuthToken();
+    if (token){
+      await fetch(`${window.WORKER_URL}/api/logout`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": "Bearer " + token
+        }
+      }).catch(()=>{});
+    }
+  } finally {
+    clearAuth();
+    // volta pra tela de login
+    try{ window.__APP_STARTED__ = false; }catch(_e){}
+    location.reload();
+  }
 }
 
-      async function doLogin(){
+async function doLogin(){
         const btn = document.getElementById("login-btn");
         const err = document.getElementById("login-error");
         const uEl = document.getElementById("login-user");
@@ -460,7 +457,7 @@ async function fetchMeRole(){
             localStorage.setItem("ftth_user", user);
             hideLogin();
             const el = document.getElementById('userName');
-            if (el) el.textContent = `${user} (${getAuthRole()})`;
+            if (el) el.textContent = user;
             // inicia app
             if (!window.__APP_STARTED__){
               window.__APP_STARTED__ = true;
@@ -470,15 +467,14 @@ async function fetchMeRole(){
 
       // Start only if authenticated
       if (!checkAuthOrShowLogin()) return;
-      // best-effort: atualiza role via /api/me
-      fetchMeRole().then(()=>{
-        const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
-        const el = document.getElementById('userName');
-        if (el) el.textContent = `${u} (${getAuthRole()})`;
-        applyPermissionsToUI();
-      });
       window.__APP_STARTED__ = true;
-      initMap();
+      // __bindLogout__
+(function(){
+  const btn = document.getElementById("btnLogout");
+  if (btn) btn.addEventListener("click", doLogout);
+})();
+
+initMap();
             }
             // limpa senha do campo
             if (pEl) pEl.value = "";
@@ -507,7 +503,6 @@ async function fetchMeRole(){
         const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
         const el = document.getElementById('userName');
         if (el) el.textContent = `${u} (${getAuthRole()})`;
-        applyPermissionsToUI();
         return true;
       }
 
@@ -1480,13 +1475,6 @@ const elUser = document.getElementById("f_user");
 
       // Start only if authenticated
       if (!checkAuthOrShowLogin()) return;
-      // best-effort: atualiza role via /api/me
-      fetchMeRole().then(()=>{
-        const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
-        const el = document.getElementById('userName');
-        if (el) el.textContent = `${u} (${getAuthRole()})`;
-        applyPermissionsToUI();
-      });
       window.__APP_STARTED__ = true;
       initMap();
     });
