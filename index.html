@@ -1061,8 +1061,11 @@ function enableFeatureEditOnClick(map){
       const hasCE  = !!(p.tipo || p.TIPO || p.ce_id || p.CE_ID || p.cdo_id || p.CDO_ID || p.ce || p.CE);
       const hasRota = !!(p.rota_id || p.ROTA_ID || (best && (best.geometry?.type || "")).includes("Line"));
 
+      // IMPORTANTE: clique em CTO deve abrir apenas o painel (sheet) de CTO,
+      // não o modal de Admin. A edição fica disponível via botão "Gerenciar".
+      // Assim evitamos o comportamento de "abrir Admin junto" ao selecionar CTO no mapa.
       if (hasCTO){
-        fillCTOFromProps(p, e.lngLat);
+        return;
       } else if (hasRota){
         fillRotaFromProps(p);
       } else if (hasCE){
