@@ -745,8 +745,9 @@ async function applyPickedLngLatAsync(lng, lat){
       if (!payload){ openAdminModal("cto"); return true; }
       const r = await adminCrud("/api/ctos", "POST", payload);
       if (r){
-        showPopup("OK", "CTO adicionada.");
-        refreshAllData();
+        focusAndOpenCTO(payload);
+        // atualiza camadas/dados em segundo plano (mantém o sheet aberto)
+        setTimeout(()=>{ try{ refreshAllData(); }catch(_){} }, 1200);
         return true;
       }
       // se falhar, reabre modal para revisar
@@ -799,13 +800,84 @@ function numOrStr(v){
 function buildCTOPayload(){
   const cto_id = String(qs("cto_id")?.value || "").trim();
   if (!cto_id){ showPopup("Campo obrigatório", "Informe o CTO ID."); return null; }
+
+  const lat = numOrStr(qs("cto_lat")?.value);
+  const lng = numOrStr(qs("cto_lng")?.value);
+  if (lat === "" || lng === ""){ showPopup("Campo obrigatório", "Informe LAT/LNG."); return null; }
+
   return {
     cto_id,
     nome: String(qs("cto_nome")?.value || "").trim(),
-    lat: numOrStr(qs("cto_lat")?.value),
-    lng: numOrStr(qs("cto_lng")?.value),
+    rua: String(qs("cto_rua")?.value || "").trim(),
+    bairro: String(qs("cto_bairro")?.value || "").trim(),
+    capacidade: numOrStr(qs("cto_capacidade")?.value),
+    lat,
+    lng
   };
 }
+
+// ===== Helpers: after creating CTO/CE, reflect immediately on map =====
+function upsertPointFeatureOnSource(sourceId, feature, matchFn){
+  try{
+    if (!map) return false;
+    const src = map.getSource(sourceId);
+    if (!src || typeof src.setData !== "function") return false;
+
+    // MapLibre GeoJSONSource keeps last data in internal fields depending on version.
+    const cur = src._data || src._options?.data || src._initialData || null;
+    if (!cur || cur.type !== "FeatureCollection") return false;
+
+    const feats = Array.isArray(cur.features) ? cur.features.slice() : [];
+    const idx = feats.findIndex((f)=> matchFn(f));
+    if (idx >= 0) feats[idx] = feature; else feats.push(feature);
+    src.setData({ type: "FeatureCollection", features: feats });
+    return true;
+  }catch(_e){
+    return false;
+  }
+}
+
+function featureFromCTO(cto){
+  const cto_id = String(cto.cto_id || cto.CTO_ID || "").trim();
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [Number(cto.lng), Number(cto.lat)] },
+    properties: {
+      cto_id,
+      CTO_ID: cto_id,
+      nome: String(cto.nome || cto.NOME || cto_id),
+      NOME: String(cto.nome || cto.NOME || cto_id),
+      rua: String(cto.rua || cto.RUA || ""),
+      RUA: String(cto.rua || cto.RUA || ""),
+      bairro: String(cto.bairro || cto.BAIRRO || ""),
+      BAIRRO: String(cto.bairro || cto.BAIRRO || "")
+    }
+  };
+}
+
+function focusAndOpenCTO(cto){
+  const feat = featureFromCTO(cto);
+  // 1) tenta atualizar a source do mapa (mantém o mesmo estilo das CTOs)
+  const ok = upsertPointFeatureOnSource("ctos", feat, (f)=>{
+    const pid = String(f?.properties?.cto_id || f?.properties?.CTO_ID || "").trim();
+    return pid && pid === String(feat.properties.cto_id);
+  });
+
+  // 2) se não der para atualizar a source (dependendo da versão do MapLibre), ainda assim abre o sheet
+  selected = { type: "cto", props: feat.properties, lngLat: { lng: Number(cto.lng), lat: Number(cto.lat) } };
+
+  try{
+    if (map){
+      map.easeTo({ center: [Number(cto.lng), Number(cto.lat)], zoom: Math.max(map.getZoom() || 0, 17) });
+    }
+  }catch(_e){}
+
+  showSelectedSheet();
+
+  // Pequeno feedback
+  showPopup("OK", ok ? "CTO adicionada e exibida no mapa." : "CTO adicionada. (O mapa pode levar alguns segundos para atualizar.)");
+}
+
 function buildCEPayload(){
   const id = String(qs("ce_id")?.value || "").trim();
   if (!id){ showPopup("Campo obrigatório", "Informe o ID da CE/CDO."); return null; }
