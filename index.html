@@ -350,14 +350,27 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
       // =========================
       const AUTH_TOKEN_KEY = "ftth_token";
       const AUTH_USER_KEY  = "ftth_auth_user";
+      const AUTH_ROLE_KEY  = "ftth_auth_role";
 
       function getAuthToken(){ return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
       function getAuthUser(){ return localStorage.getItem(AUTH_USER_KEY) || ""; }
+      function getAuthRole(){ return localStorage.getItem(AUTH_ROLE_KEY) || "user"; }
 
-      function setAuth(token, user){
+      function setAuth(token, user, role){
         if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
         if (user)  localStorage.setItem(AUTH_USER_KEY, user);
+        if (role)  localStorage.setItem(AUTH_ROLE_KEY, role);
       }
+function applyPermissionsToUI(){
+  const role = getAuthRole();
+  const isAdmin = role === "admin";
+  document.documentElement.dataset.role = role;
+  // Esconde/desabilita tudo marcado como admin-only (se existir no HTML)
+  document.querySelectorAll("[data-requires-admin]").forEach((el)=>{
+    el.style.display = isAdmin ? "" : "none";
+  });
+}
+
 
       function clearAuth(){
         localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -406,6 +419,17 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
         return res;
       }
 
+async function fetchMeRole(){
+  try{
+    const res = await authFetch(`${window.WORKER_URL}/api/me`);
+    if (!res.ok) return null;
+    const data = await res.json().catch(()=>null);
+    const role = String(data?.role || "user");
+    localStorage.setItem(AUTH_ROLE_KEY, role);
+    return role;
+  }catch(_){ return null; }
+}
+
       async function doLogin(){
         const btn = document.getElementById("login-btn");
         const err = document.getElementById("login-error");
@@ -431,12 +455,12 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
           });
           const data = await res.json().catch(()=> ({}));
           if (data && data.ok && data.token){
-            setAuth(data.token, user);
+            setAuth(data.token, user, data.role || "user");
             // mantém compat com fluxo antigo
             localStorage.setItem("ftth_user", user);
             hideLogin();
             const el = document.getElementById('userName');
-            if (el) el.textContent = user;
+            if (el) el.textContent = `${user} (${getAuthRole()})`;
             // inicia app
             if (!window.__APP_STARTED__){
               window.__APP_STARTED__ = true;
@@ -446,6 +470,13 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
 
       // Start only if authenticated
       if (!checkAuthOrShowLogin()) return;
+      // best-effort: atualiza role via /api/me
+      fetchMeRole().then(()=>{
+        const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+        const el = document.getElementById('userName');
+        if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
+      });
       window.__APP_STARTED__ = true;
       initMap();
             }
@@ -475,7 +506,8 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
         hideLogin();
         const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
         const el = document.getElementById('userName');
-        if (el) el.textContent = u;
+        if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
         return true;
       }
 
@@ -1448,6 +1480,13 @@ const elUser = document.getElementById("f_user");
 
       // Start only if authenticated
       if (!checkAuthOrShowLogin()) return;
+      // best-effort: atualiza role via /api/me
+      fetchMeRole().then(()=>{
+        const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+        const el = document.getElementById('userName');
+        if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
+      });
       window.__APP_STARTED__ = true;
       initMap();
     });
