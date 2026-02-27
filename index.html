@@ -665,12 +665,19 @@ function switchAdminTab(tab){
 
 async function reverseGeocode(lat, lng){
   try{
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
-    const res = await fetch(url, {
-      headers: {
-        "accept": "application/json",
-        "accept-language": "pt-BR,pt;q=0.9,en;q=0.5"
-      }
+    // Proxy via Worker para evitar CORS (Nominatim bloqueia direto do browser)
+    const url = `${API_BASE}/api/reverse_geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
+    const res = await authFetch(url, { method: "GET" });
+    if (!res.ok) return null;
+    const data = await res.json().catch(()=>null);
+    if (!data || !data.ok) return null;
+    return { rua: data.rua || "", bairro: data.bairro || "", raw: data.raw || null };
+  }catch(_){
+    return null;
+  }
+}
+
+
     });
     if (!res.ok) return null;
     const data = await res.json().catch(()=>null);
