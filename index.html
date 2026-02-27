@@ -355,13 +355,16 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
       function getAuthToken(){ return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
       function getAuthUser(){ return localStorage.getItem(AUTH_USER_KEY) || ""; }
 
-      function setAuth(token, user){
+      function getAuthRole(){ return localStorage.getItem(AUTH_ROLE_KEY) || "user"; }
+      function setAuth(token, user, role){
         if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
         if (user)  localStorage.setItem(AUTH_USER_KEY, user);
+        if (role)  localStorage.setItem(AUTH_ROLE_KEY, role);
       }
 
       function clearAuth(){
         localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_ROLE_KEY);
         // mantém o nome do user salvo para facilitar o próximo login
       }
 
@@ -407,24 +410,15 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
         return res;
       }
 
-      async function doLogout(){
+      async function fetchMeRole(){
   try{
-    const token = getAuthToken();
-    if (token){
-      await fetch(`${window.WORKER_URL}/api/logout`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "authorization": "Bearer " + token
-        }
-      }).catch(()=>{});
-    }
-  } finally {
-    clearAuth();
-    // volta pra tela de login
-    try{ window.__APP_STARTED__ = false; }catch(_e){}
-    location.reload();
-  }
+    const res = await authFetch(`${window.WORKER_URL}/api/me`);
+    if (!res.ok) return null;
+    const data = await res.json().catch(()=>null);
+    const role = String(data?.role || "user");
+    localStorage.setItem(AUTH_ROLE_KEY, role);
+    return role;
+  }catch(_){ return null; }
 }
 
 async function doLogin(){
@@ -467,15 +461,15 @@ async function doLogin(){
 
       // Start only if authenticated
       if (!checkAuthOrShowLogin()) return;
-      window.__APP_STARTED__ = true;
-      // __bindLogout__
-(function(){
-  const btn = document.getElementById("btnLogout");
-  if (btn) btn.addEventListener("click", doLogout);
-})();
-
+// best-effort: atualiza role via /api/me e atualiza pill
+fetchMeRole().then(()=>{
+  const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+  const el = document.getElementById('userName');
+  if (el) el.textContent = `${u} (${getAuthRole()})`;
+});
+window.__APP_STARTED__ = true;
 initMap();
-            }
+}
             // limpa senha do campo
             if (pEl) pEl.value = "";
           } else {
@@ -488,12 +482,32 @@ initMap();
         }
       }
 
-      function doLogout(){
-        clearAuth();
-        showLogin("Você saiu. Faça login para continuar.");
-      }
+      async function doLogout(){
+  try{
+    const token = getAuthToken();
+    if (token){
+      await fetch(`${window.WORKER_URL}/api/logout`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": "Bearer " + token
+        }
+      }).catch(()=>{});
+    }
+  } finally {
+    clearAuth();
+    // volta pro login e reinicia a página para limpar estado do mapa
+    location.reload();
+  }
+}
 
-      function checkAuthOrShowLogin(){
+      // __bindLogout__
+(function(){
+  const btn = document.getElementById("btnLogout");
+  if (btn) btn.addEventListener("click", () => { doLogout(); });
+})();
+
+function checkAuthOrShowLogin(){
         const token = getAuthToken();
         if (!token){
           showLogin("");
@@ -1475,9 +1489,15 @@ const elUser = document.getElementById("f_user");
 
       // Start only if authenticated
       if (!checkAuthOrShowLogin()) return;
-      window.__APP_STARTED__ = true;
-      initMap();
-    });
+// best-effort: atualiza role via /api/me e atualiza pill
+fetchMeRole().then(()=>{
+  const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+  const el = document.getElementById('userName');
+  if (el) el.textContent = `${u} (${getAuthRole()})`;
+});
+window.__APP_STARTED__ = true;
+initMap();
+});
   </script>
 </body>
 </html>
