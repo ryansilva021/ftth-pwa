@@ -690,9 +690,15 @@ function setPickBanner(on){
   el.style.display = on ? "block" : "none";
 }
 
-function startPick(kind){
+function startPick(kind, opts){
   if (!assertAdmin()) return;
-  __pickMode = { kind };
+  const options = opts || {};
+  __pickMode = { kind, autoSave: !!options.autoSave };
+  setPickBanner(true);
+  // fecha o modal para liberar o clique no mapa
+  closeAdminModal();
+  showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
+};
   setPickBanner(true);
   // fecha o modal para liberar o clique no mapa
   closeAdminModal();
