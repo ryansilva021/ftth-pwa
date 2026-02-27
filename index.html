@@ -8,7 +8,7 @@
   <script>
     window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
     window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
-    window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
+window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
   </script>
 
@@ -1150,7 +1150,7 @@ async function authFetch(url, opts={}){
     const res = await authFetch(`${window.WORKER_URL}/api/me`);
     if (!res.ok) return null;
     const data = await res.json().catch(()=>null);
-    const role = String(data?.role || "user");
+    const role = String((data?.user?.role ?? data?.role ?? "user")).toLowerCase();
     localStorage.setItem(AUTH_ROLE_KEY, role);
     return role;
   }catch(_){ return null; }
@@ -1181,7 +1181,7 @@ async function doLogin(){
           });
           const data = await res.json().catch(()=> ({}));
           if (data && data.ok && data.token){
-            setAuth(data.token, user, data.role || "user");
+            setAuth(data.token, (data.user?.username || user), String((data.user?.role ?? data.role ?? "user")).toLowerCase());
             // mantém compat com fluxo antigo
             localStorage.setItem("ftth_user", user);
             hideLogin();
@@ -1264,6 +1264,15 @@ async function fetchJSON(path) {
         if (!res.ok) throw new Error(`${path} -> ${res.status}`);
         return await res.json();
       }
+
+      function unwrapArray(resp){
+        if (Array.isArray(resp)) return resp;
+        if (resp && Array.isArray(resp.items)) return resp.items;
+        if (resp && Array.isArray(resp.data)) return resp.data;
+        if (resp && resp.data && Array.isArray(resp.data.items)) return resp.data.items;
+        return [];
+      }
+
 
       function openExternalNav(lng, lat, label) {
         const ll = `${lat},${lng}`;
@@ -1856,8 +1865,10 @@ if (!map.isStyleLoaded()){
         map.on("load", async () => {
           try {
             // CTOs
-            const ctos = await fetchJSON("/api/ctos");
-            const movs = await fetchJSON("/api/movimentacoes");
+            const ctosResp = await fetchJSON("/api/ctos");
+            const movsResp = await fetchJSON("/api/movimentacoes");
+            const ctos = unwrapArray(ctosResp);
+            const movs = unwrapArray(movsResp);
 
             const usedByCto = new Map();
             // Agrupa movimentações por CTO + calcula "online" por cliente (última movimentação)
@@ -2082,7 +2093,8 @@ if (!map.isStyleLoaded()){
 
 
 // Caixas (CE/CDO) - ícones via Canvas (sem fontes)
-            const caixas = await fetchJSON("/api/caixas_emenda_cdo");
+            const caixasResp = await fetchJSON("/api/caixas_emenda_cdo");
+            const caixas = unwrapArray(caixasResp);
             const caixasGeo = {
               type: "FeatureCollection",
               features: caixas.map((cx) => ({
