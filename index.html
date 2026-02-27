@@ -1785,6 +1785,16 @@ const elUser = document.getElementById("f_user");
           zoom: window.PROJECT_ZOOM,
           attributionControl: true,
         });
+// expõe o mapa globalmente (usado por admin: editar/desenhar/pick)
+window.map = map;
+
+// admin: clicar em itens existentes no mapa abre modal para editar/remover
+try{ enableFeatureEditOnClick(map); }catch(_e){}
+
+if (!map.isStyleLoaded()){
+  map.once("load", ()=>{ try{ enableFeatureEditOnClick(map); }catch(_e){} });
+}
+
 
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
