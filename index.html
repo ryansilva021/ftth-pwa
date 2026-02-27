@@ -699,13 +699,7 @@ function startPick(kind, opts){
   closeAdminModal();
   showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
 }
-;
-  __pickMode = { kind, autoSave: !!options.autoSave };
-  setPickBanner(true);
-  // fecha o modal para liberar o clique no mapa
-  closeAdminModal();
-  showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
-}
+
 
 async function applyPickedLngLatAsync(lng, lat){
   if (!__pickMode) return false;
