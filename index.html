@@ -634,7 +634,9 @@ function refreshAllData(){
 }
 
 // ===== Admin Modal UI + Add by Map Click =====
-let __pickMode = null; // { kind: 'cto'|'ce' }
+let __pickMode = null;
+      let __lastAdminTab = "cto";
+      let __reopenAdminAfterPick = true; // { kind: 'cto'|'ce' }
 
 function qs(id){ return document.getElementById(id); }
 
@@ -661,6 +663,27 @@ function switchAdminTab(tab){
   });
 }
 
+async function reverseGeocode(lat, lng){
+  try{
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
+    const res = await fetch(url, {
+      headers: {
+        "accept": "application/json",
+        "accept-language": "pt-BR,pt;q=0.9,en;q=0.5"
+      }
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(()=>null);
+    const a = data?.address || {};
+    const rua = a.road || a.pedestrian || a.footway || a.cycleway || a.path || a.residential || "";
+    const bairro = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.district || "";
+    const cidade = a.city || a.town || a.village || a.municipality || "";
+    return { rua, bairro, cidade, raw: data };
+  }catch(_){
+    return null;
+  }
+}
+
 function setPickBanner(on){
   const el = qs("pickBanner");
   if (!el) return;
@@ -671,25 +694,55 @@ function startPick(kind){
   if (!assertAdmin()) return;
   __pickMode = { kind };
   setPickBanner(true);
+  // fecha o modal para liberar o clique no mapa
+  closeAdminModal();
   showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
 }
 
-function applyPickedLngLat(lng, lat){
+async function applyPickedLngLatAsync(lng, lat){
   if (!__pickMode) return false;
   const k = __pickMode.kind;
+
+  // Preenche lat/lng
   if (k === "cto"){
     if (qs("cto_lat")) qs("cto_lat").value = String(lat);
     if (qs("cto_lng")) qs("cto_lng").value = String(lng);
-    openAdminModal("cto");
   } else if (k === "ce"){
     if (qs("ce_lat")) qs("ce_lat").value = String(lat);
     if (qs("ce_lng")) qs("ce_lng").value = String(lng);
-    openAdminModal("ce");
   }
+
+  // Busca rua/bairro
+  const geo = await reverseGeocode(lat, lng);
+  if (geo){
+    if (k === "cto"){
+      if (qs("cto_rua") && !qs("cto_rua").value) qs("cto_rua").value = geo.rua || "";
+      if (qs("cto_bairro") && !qs("cto_bairro").value) qs("cto_bairro").value = geo.bairro || "";
+    } else if (k === "ce"){
+      if (qs("ce_rua") && !qs("ce_rua").value) qs("ce_rua").value = geo.rua || "";
+      if (qs("ce_bairro") && !qs("ce_bairro").value) qs("ce_bairro").value = geo.bairro || "";
+    }
+  }
+
+  // encerra pick mode e reabre modal na aba correta
   __pickMode = null;
   setPickBanner(false);
+
+  // reabre o modal na aba usada
+  if (__reopenAdminAfterPick){
+    if (k === "cto") openAdminModal("cto");
+    else if (k === "ce") openAdminModal("ce");
+    else openAdminModal(__lastAdminTab || "cto");
+  }
   return true;
 }
+
+function applyPickedLngLat(lng, lat){
+  // wrapper sync p/ uso no handler do map
+  applyPickedLngLatAsync(lng, lat);
+  return true;
+}
+
 
 function numOrStr(v){
   const s = String(v ?? "").trim();
@@ -2162,10 +2215,12 @@ initMap();
         <div class="form-grid">
           <div class="field"><label>CTO ID</label><input id="cto_id" placeholder="CTO001" /></div>
           <div class="field"><label>Nome</label><input id="cto_nome" placeholder="CTO 001" /></div>
-          <div class="field"><label>Latitude</label><input id="cto_lat" placeholder="-22.412" /></div>
+                      <div class="field"><label>Rua</label><input id="cto_rua" placeholder="Rua ..." /></div>
+            <div class="field"><label>Bairro</label><input id="cto_bairro" placeholder="Bairro ..." /></div>
+<div class="field"><label>Latitude</label><input id="cto_lat" placeholder="-22.412" /></div>
           <div class="field"><label>Longitude</label><input id="cto_lng" placeholder="-43.166" /></div>
           <div class="field full">
-            <div class="hint">Dica: você pode clicar no mapa para preencher Lat/Lng.</div>
+            <div class="hint">Dica: use “Selecionar no mapa” para preencher Lat/Lng e endereço automaticamente.</div>
           </div>
         </div>
         <div class="actions">
@@ -2187,7 +2242,9 @@ initMap();
             </select>
           </div>
           <div class="field"><label>Nome</label><input id="ce_nome" placeholder="CE 001" /></div>
-          <div class="field"><label>Observação</label><input id="ce_obs" placeholder="" /></div>
+                      <div class="field"><label>Rua</label><input id="ce_rua" placeholder="Rua ..." /></div>
+            <div class="field"><label>Bairro</label><input id="ce_bairro" placeholder="Bairro ..." /></div>
+<div class="field"><label>Observação</label><input id="ce_obs" placeholder="" /></div>
           <div class="field"><label>Latitude</label><input id="ce_lat" placeholder="-22.412" /></div>
           <div class="field"><label>Longitude</label><input id="ce_lng" placeholder="-43.166" /></div>
           <div class="field full">
