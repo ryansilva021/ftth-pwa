@@ -587,7 +587,7 @@ async function adminAddCTO(){
   const payload = promptJson("Adicionar/Atualizar CTO (POST /api/ctos)", { cto_id: "CTO001", nome: "CTO 001", lat: -22.0, lng: -41.0 });
   if (!payload) return;
   const r = await adminCrud("/api/ctos", "POST", payload);
-  if (r) { showPopup("OK", "CTO enviado."); try{ refreshAllData(); }catch(_){ } }
+  if (r) { showPopup("OK", "CTO enviado."); try{ await safeReloadCTOs(); }catch(_){ } }
 }
 async function adminDelCTO(){
   const payload = promptJson("Remover CTO (DELETE /api/ctos) — informe o identificador", { cto_id: "CTO001" });
@@ -631,6 +631,41 @@ function refreshAllData(){
   if (typeof loadAllData === "function") return loadAllData();
   // fallback: recarrega a página
   location.reload();
+}
+
+
+// Atualiza apenas a source de CTOs com GeoJSON válido (evita 'Input data is not a valid GeoJSON object.')
+async function safeReloadCTOs(){
+  try{
+    const base = getApiBase();
+    const url = base ? (base + "/api/ctos") : "/api/ctos";
+    const res = await fetch(url, { headers: { "accept":"application/json" } });
+    if (!res.ok) return false;
+    const ctos = await res.json();
+    if (!Array.isArray(ctos)) return false;
+
+    const fc = {
+      type: "FeatureCollection",
+      features: ctos
+        .filter(c=> c && isFinite(Number(c.lat)) && isFinite(Number(c.lng)))
+        .map((cto)=>({
+          type:"Feature",
+          geometry:{ type:"Point", coordinates:[Number(cto.lng), Number(cto.lat)] },
+          properties:{ ...cto }
+        }))
+    };
+
+    const map = window.map || (typeof map !== "undefined" ? map : null);
+    if (!map) return false;
+    const src = map.getSource && map.getSource("ctos");
+    if (src && typeof src.setData === "function"){
+      src.setData(fc);
+      return true;
+    }
+    return false;
+  }catch(_e){
+    return false;
+  }
 }
 
 // ===== Admin Modal UI + Add by Map Click =====
@@ -747,7 +782,7 @@ async function applyPickedLngLatAsync(lng, lat){
       if (r){
         focusAndOpenCTO(payload);
         // atualiza camadas/dados em segundo plano (mantém o sheet aberto)
-        setTimeout(()=>{ try{ refreshAllData(); }catch(_){} }, 1200);
+        setTimeout(()=>{ safeReloadCTOs(); }, 400);
         return true;
       }
       // se falhar, reabre modal para revisar
@@ -909,13 +944,13 @@ async function modalSaveCTO(){
   const payload = buildCTOPayload();
   if (!payload) return;
   const r = await adminCrud("/api/ctos", "POST", payload);
-  if (r){ showPopup("OK", "CTO salvo."); closeAdminModal(); refreshAllData(); }
+  if (r){ showPopup("OK", "CTO salvo."); closeAdminModal(); safeReloadCTOs(); }
 }
 async function modalDelCTO(){
   const cto_id = String(qs("cto_id")?.value || "").trim();
   if (!cto_id){ showPopup("Campo obrigatório", "Informe o CTO ID."); return; }
   const r = await adminCrud("/api/ctos", "DELETE", { cto_id });
-  if (r){ showPopup("OK", "CTO removido."); closeAdminModal(); refreshAllData(); }
+  if (r){ showPopup("OK", "CTO removido."); closeAdminModal(); safeReloadCTOs(); }
 }
 async function modalSaveCE(){
   const payload = buildCEPayload();
