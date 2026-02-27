@@ -6,7 +6,7 @@
   <title>FTTH-PWA Mapa</title>
 
   <script>
-    window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
+    window.API_BASE = "https://ftth-pwa.lupiing37.workers.dev";
     window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
 window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     window.PROJECT_ZOOM = 12;
@@ -640,6 +640,12 @@ let __pickMode = null;
 
 function qs(id){ return document.getElementById(id); }
 
+function getApiBase(){
+  // Configure via window.API_BASE = "https://<your-worker>.workers.dev"
+  return (window.API_BASE && String(window.API_BASE).trim()) ? String(window.API_BASE).trim().replace(/\/$/,"") : "";
+}
+
+
 function openAdminModal(tab){
   if (!assertAdmin()) return;
   const b = qs("adminModalBackdrop");
@@ -665,9 +671,9 @@ function switchAdminTab(tab){
 
 async function reverseGeocode(lat, lng){
   try{
-    // Proxy via Worker para evitar CORS (Nominatim bloqueia direto do browser)
-    const url = `${API_BASE}/api/reverse_geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
-    const res = await authFetch(url, { method: "GET" });
+    const base = getApiBase();
+    const url = `${base}/api/reverse_geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
+    const res = await apiFetch(url, { method: "GET" });
     if (!res.ok) return null;
     const data = await res.json().catch(()=>null);
     if (!data || !data.ok) return null;
@@ -677,19 +683,6 @@ async function reverseGeocode(lat, lng){
   }
 }
 
-
-    });
-    if (!res.ok) return null;
-    const data = await res.json().catch(()=>null);
-    const a = data?.address || {};
-    const rua = a.road || a.pedestrian || a.footway || a.cycleway || a.path || a.residential || "";
-    const bairro = a.suburb || a.neighbourhood || a.quarter || a.city_district || a.district || "";
-    const cidade = a.city || a.town || a.village || a.municipality || "";
-    return { rua, bairro, cidade, raw: data };
-  }catch(_){
-    return null;
-  }
-}
 
 function setPickBanner(on){
   const el = qs("pickBanner");
@@ -1770,7 +1763,23 @@ const elUser = document.getElementById("f_user");
       }
 
       function initMap() {
-        map = new maplibregl.Map({
+        const apiBase = getApiBase();
+const style = {
+  "version": 8,
+  "sources": {
+    "osm": {
+      "type": "raster",
+      "tiles": [ `${apiBase}/api/tiles/{z}/{x}/{y}.png` ],
+      "tileSize": 256,
+      "attribution": "© OpenStreetMap contributors"
+    }
+  },
+  "layers": [
+    { "id": "osm", "type": "raster", "source": "osm" }
+  ]
+};
+
+map = new maplibregl.Map({
           container: "map",
           style: {
             version: 8,
