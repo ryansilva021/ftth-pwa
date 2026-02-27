@@ -1,91 +1,2383 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<title>FTTH Map</title>
-<link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
-<style>
-body,html{margin:0;height:100%}
-#map{width:100%;height:100%}
-#login{position:absolute;top:20px;left:20px;background:#111;color:#fff;padding:15px;border-radius:8px}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FTTH-PWA Mapa</title>
+
+  <script>
+    window.WORKER_URL = "https://ftth-pwa.lupiing37.workers.dev";
+    window.__BUILD_ID__ = "FTTH-2026-02-25-MOBILE-GPS-REGISTRO-STEP3-AUTOSYNC";
+window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
+    window.PROJECT_ZOOM = 12;
+  </script>
+
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#111a2e;
+      --muted:#9ca3af;
+      --border:#1f2a44;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --blue:#3b82f6;
+      --purple:#a855f7;
+      --orange:#f97316;
+      --radius:16px;
+      --safe-top: env(safe-area-inset-top);
+      --safe-bottom: env(safe-area-inset-bottom);
+    }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:#fff}
+    header{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:10px 12px calc(10px + var(--safe-top));
+      background:var(--panel); position:sticky; top:0; z-index:5;
+    }
+    .left{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .badge{font-size:12px;color:var(--muted);max-width:65vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .chip{
+      display:flex;gap:6px;align-items:center;
+      font-size:12px;color:#cbd5e1;background:var(--bg);
+      border:1px solid var(--border);border-radius:999px;padding:8px 12px;
+      min-height:40px;
+    }
+    .chip input{transform:scale(1.2); accent-color: var(--ok);}
+    #map{width:100vw;height:calc(100vh - 64px);}
+
+    /* Floating buttons (mobile-first) */
+    .fabCol{
+      position:fixed; right:14px; bottom:calc(14px + var(--safe-bottom)); z-index:6;
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .fab{
+      width:52px;height:52px;border-radius:999px;border:1px solid rgba(255,255,255,.12);
+      background:rgba(17,26,46,.92); color:#fff; display:flex; align-items:center; justify-content:center;
+      box-shadow: 0 10px 25px rgba(0,0,0,.35);
+      backdrop-filter: blur(6px);
+      -webkit-tap-highlight-color: transparent;
+      user-select:none;
+      font-size:20px;
+    }
+    .fab:active{transform:scale(0.98)}
+    .fabSmall{width:44px;height:44px;font-size:18px}
+
+    /* Bottom sheet */
+    .sheetBackdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.45);
+      z-index:10; display:none;
+    }
+    .sheet{
+      position:fixed; left:0; right:0; bottom:0;
+      z-index:11; display:none;
+      background:rgba(17,26,46,.98); border-top:1px solid rgba(255,255,255,.10);
+      border-radius: 20px 20px 0 0;
+      padding:12px 12px calc(12px + var(--safe-bottom));
+      max-height:78vh; overflow:auto;
+    }
+    .sheetHandle{width:44px;height:5px;border-radius:99px;background:rgba(255,255,255,.25);margin:6px auto 10px}
+    .sheetTitle{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .sheetTitle h3{margin:0;font-size:16px}
+    .sheetTitle .x{font-size:22px;line-height:1; padding:6px 10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.15)}
+    .kv{font-size:12px;color:var(--muted);margin:6px 0 12px}
+    .btnRow{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{
+      padding:12px 14px; border-radius:14px; border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.15); color:#fff; font-weight:700; min-height:44px;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .btnPrimary{background:var(--ok); color:#001b09; border:none;}
+    .btnWarn{background:var(--warn); color:#1b1200; border:none;}
+    .btnBlue{background:var(--blue); color:#00112a; border:none;}
+    .btn:active{transform:scale(0.99)}
+    .field{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+    .field label{font-size:12px;color:#cbd5e1}
+    .field input,.field select,.field textarea{
+      border-radius:14px; border:1px solid rgba(255,255,255,.12);
+      background:rgba(0,0,0,.22); color:#fff; padding:12px 12px;
+      font-size:15px; outline:none;
+    }
+    .field textarea{min-height:84px; resize:vertical}
+    .hint{font-size:12px;color:var(--muted);margin-top:6px}
+    a{color:#93c5fd}
+
+    /* MapLibre popup readability on mobile */
+    .maplibregl-popup-content{
+      border-radius:14px !important;
+      padding:12px 12px !important;
+      font-size:14px !important;
+      line-height:1.35 !important;
+      max-width: 80vw !important;
+    }
+  
+    /* Login overlay */
+    .login-screen{
+      position:fixed; inset:0;
+      display:none;
+      align-items:center; justify-content:center;
+      background:rgba(2,6,23,.82);
+      backdrop-filter: blur(10px);
+      z-index:99999;
+      padding:24px;
+    }
+    .login-screen.show{ display:flex; }
+    .login-card{
+      width:min(380px, 92vw);
+      border-radius:18px;
+      padding:18px 16px 14px;
+      background: linear-gradient(180deg, rgba(17,24,39,.92), rgba(2,6,23,.92));
+      border:1px solid rgba(148,163,184,.18);
+      box-shadow:0 20px 70px rgba(0,0,0,.55);
+    }
+    .login-title{ color:#fff; font-weight:900; font-size:18px; letter-spacing:.2px; }
+    .login-sub{ color:rgba(226,232,240,.78); margin:6px 0 14px; font-size:13px; }
+    .login-label{ display:block; color:rgba(226,232,240,.82); font-size:12px; margin:10px 0 6px; }
+    .login-input{
+      width:100%;
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid rgba(148,163,184,.18);
+      background:rgba(15,23,42,.65);
+      color:#fff;
+      outline:none;
+      font-size:14px;
+    }
+    .login-input:focus{ border-color: rgba(59,130,246,.5); box-shadow:0 0 0 4px rgba(59,130,246,.18); }
+    .login-btn{
+      margin-top:14px;
+      width:100%;
+      padding:12px 12px;
+      border:none;
+      border-radius:14px;
+      background: linear-gradient(180deg, rgba(34,197,94,1), rgba(22,163,74,1));
+      color:#04110a;
+      font-weight:900;
+      font-size:14px;
+      cursor:pointer;
+      box-shadow:0 10px 30px rgba(34,197,94,.25);
+    }
+    .login-btn:active{ transform: translateY(1px); }
+    .login-error{ min-height:18px; margin-top:10px; color:#fca5a5; font-size:12px; text-align:center; }
+
+    header .right{ display:flex; align-items:center; gap:10px; }
+    .userpill{
+      display:flex; align-items:center; gap:6px;
+      padding:8px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      color: rgba(255,255,255,.90);
+      font-size:12px;
+      white-space:nowrap;
+    }
+    .logoutBtn{
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(239,68,68,.12);
+      color: rgba(255,255,255,.92);
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
+    }
+    .logoutBtn:hover{ filter:brightness(1.08); }
+/* ===== Admin Modal ===== */
+.modal-backdrop{
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(6px);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index: 9999;
+  padding: 16px;
+}
+.modal{
+  width: min(760px, 100%);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 20px 70px rgba(0,0,0,.45);
+  overflow:hidden;
+}
+.modal-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.modal-title{ font-weight: 800; letter-spacing: .2px; }
+.modal-close{
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.modal-body{ padding: 16px; }
+.tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 12px; }
+.tab{
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  cursor:pointer;
+  user-select:none;
+  font-weight: 700;
+  font-size: 12px;
+}
+.tab.active{ background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.35); }
+.form-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.form-grid .full{ grid-column: 1 / -1; }
+.field label{ display:block; font-size: 12px; opacity:.85; margin: 2px 2px 6px; }
+.field input, .field select, .field textarea{
+  width:100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  outline: none;
+}
+.field textarea{ min-height: 120px; resize: vertical; }
+.actions{
+  display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;
+  margin-top: 12px;
+}
+.btn-primary{
+  background: linear-gradient(180deg, rgba(34,197,94,.95), rgba(22,163,74,.95));
+  border: none;
+  color: #07210f;
+  font-weight: 900;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor:pointer;
+}
+.btn-danger{
+  background: rgba(239,68,68,.20);
+  border: 1px solid rgba(239,68,68,.35);
+  color: #fff;
+  font-weight: 900;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor:pointer;
+}
+.btn-ghost{
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  font-weight: 800;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor:pointer;
+}
+.hint{
+  font-size: 12px;
+  opacity: .8;
+  margin-top: 6px;
+}
+.pick-banner{
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  background: rgba(2,6,23,.86);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 999px;
+  display:none;
+  z-index: 10000;
+}
+
+/* ===== Draw Route ===== */
+.draw-point{
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  background: rgba(34,197,94,.95);
+  border: 2px solid rgba(255,255,255,.9);
+  box-shadow: 0 8px 20px rgba(0,0,0,.35);
+}
+
 </style>
 </head>
 <body>
-<div id="login">
-  <input id="user" placeholder="usuario"><br>
-  <input id="pass" placeholder="senha" type="password"><br>
-  <button onclick="login()">Entrar</button>
+
+  <!-- LOGIN OVERLAY -->
+  <div id="login-screen" class="login-screen" aria-hidden="true">
+    <div class="login-card">
+      <div class="login-title">FTTH • Login</div>
+      <div class="login-sub">Entre para acessar o mapa</div>
+
+      <label class="login-label" for="login-user">Usuário</label>
+      <input id="login-user" class="login-input" autocomplete="username" placeholder="ex: admin" />
+
+      <label class="login-label" for="login-pass">Senha</label>
+      <input id="login-pass" class="login-input" type="password" autocomplete="current-password" placeholder="••••••••" />
+
+      <button id="login-btn" class="login-btn">Entrar</button>
+      <div id="login-error" class="login-error"></div>
+    </div>
+  </div>
+
+  <header>
+    <div class="left">
+      <div><b>🗺️ FTTH</b></div>
+      <div class="badge" id="badge">mobile</div>
+      <div class="controls">
+        <label class="chip"><input id="toggleCTOs" type="checkbox" checked /> CTOs</label>
+        <label class="chip"><input id="toggleCaixas" type="checkbox" checked /> Caixas</label>
+        <label class="chip"><input id="toggleRotas" type="checkbox" checked /> Rotas</label>
+      </div>
+    </div>
+    <div class="right">
+      <div class="userpill" id="userPill">👤 <span id="userName">—</span></div>
+      <div id="adminMenu" class="adminMenu" data-requires-admin style="display:none; align-items:center; gap:8px; margin-right:10px;">
+        <button class="btn small" id="btnOpenAdmin">Gerenciar</button>
+
+  <span class="pill">Admin</span>
+  
+  
+  
+  
+  
+  
 </div>
-<div id="map"></div>
 
-<script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-<script>
-const API="https://ftth-pwa.pages.dev/";
+<button class="logoutBtn" id="btnLogout" title="Sair">Sair</button>
+    </div>
+  </header>
 
-let role=null;
+  <div id="map"></div>
 
-async function login(){
-  const res=await fetch(API+"/api/login",{method:"POST",body:JSON.stringify({
-    username:user.value,password:pass.value
-  }),headers:{"Content-Type":"application/json"},credentials:"include"});
-  const j=await res.json();
-  if(j.ok){
-    role=j.role;
-    login.style.display="none";
-    loadMap();
-  }else alert("login invalido");
-}
+  <!-- Floating actions -->
+  <div class="fabCol" aria-label="Ações">
+    <div class="fab" id="btnGPS" title="Minha localização">📍</div>
+    <div class="fab fabSmall" id="btnFollow" title="Seguir GPS (liga/desliga)">🧭</div>
+    <div class="fab fabSmall" id="btnPend" title="Pendentes">🧾</div>
+    <div class="fab fabSmall" id="btnSync" title="Sincronizar pendentes">🔄</div>
+    <div class="fab fabSmall" id="btnReg" title="Registrar (último selecionado)">✍️</div>
+  </div>
 
-let map;
+  <!-- Bottom sheet + backdrop -->
+  <div class="sheetBackdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet">
+    <div class="sheetHandle"></div>
+    <div class="sheetTitle">
+      <h3 id="sheetHeading">Detalhes</h3>
+      <div class="x" id="sheetClose" role="button" aria-label="Fechar">✕</div>
+    </div>
+    <div class="kv" id="sheetSub"></div>
+    <div id="sheetBody"></div>
+  </div>
 
-function loadMap(){
-  map=new maplibregl.Map({
-    container:"map",
-    style:"https://demotiles.maplibre.org/style.json",
-    center:[-41.97,-22.48],
-    zoom:12
-  });
+  <script>
+    window.addEventListener("DOMContentLoaded", () => {
+      const IS_FILE_ORIGIN = (location.protocol === "file:" || location.origin === "null");
+      const badge = document.getElementById("badge");
+      if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__}`;
 
-  map.on("load",async()=>{
-    await loadCTOS();
+      const elToggleCTOs = document.getElementById("toggleCTOs");
+      const elToggleCaixas = document.getElementById("toggleCaixas");
+      const elToggleRotas = document.getElementById("toggleRotas");
 
-    if(role==="admin"){
-      map.on("click",async e=>{
-        const id=prompt("ID CTO:");
-        if(!id) return;
+      const btnGPS = document.getElementById("btnGPS");
+      const btnFollow = document.getElementById("btnFollow");
+      const btnPend = document.getElementById("btnPend");
+      const btnSync = document.getElementById("btnSync");
+      const btnReg = document.getElementById("btnReg");
 
-        await fetch(API+"/api/ctos",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          credentials:"include",
-          body:JSON.stringify({
-            id:id,nome:id,
-            lat:e.lngLat.lat,lng:e.lngLat.lng,
-            rua:"",bairro:""
-          })
+      const sheet = document.getElementById("sheet");
+      const sheetBackdrop = document.getElementById("sheetBackdrop");
+      const sheetClose = document.getElementById("sheetClose");
+      const sheetHeading = document.getElementById("sheetHeading");
+      const sheetSub = document.getElementById("sheetSub");
+      const sheetBody = document.getElementById("sheetBody");
+
+      // Estado
+      let selected = null; // {type:'cto'|'caixa'|'rota', props, lngLat}
+      let map = null;
+
+      // Movimentações por CTO (para lista de clientes online + histórico)
+      let movByCto = new Map(); // cto_id -> [{ts,tipo,cliente,usuario,obs,raw}]
+      let onlineClientsByCto = new Map(); // cto_id -> [{cliente, last_ts, last_tipo, usuario, obs}]
+
+      // GPS
+      let watchId = null;
+      let followOn = false;
+      let userMarker = null;
+
+      function openSheet(title, subtitle, bodyHTML) {
+        sheetHeading.textContent = title || "Detalhes";
+        sheetSub.innerHTML = subtitle || "";
+        sheetBody.innerHTML = bodyHTML || "";
+        sheetBackdrop.style.display = "block";
+        sheet.style.display = "block";
+      }
+
+      function showPopup(title, message) {
+        openSheet(title || "Aviso", message || "", `
+          <div class="btnRow">
+            <button class="btn btnPrimary" id="btnOk">OK</button>
+          </div>
+        `);
+        const ok = document.getElementById("btnOk");
+        if (ok) ok.onclick = closeSheet;
+      }
+
+      let offlinePopupShown = false;
+      function onBecameOffline() {
+        if (offlinePopupShown) return;
+        offlinePopupShown = true;
+        if (badge) badge.textContent = "🔴 Offline (registros serão salvos no aparelho)";
+        showPopup("Sem internet", "Você está offline. Pode continuar registrando — os registros ficam salvos no aparelho e serão sincronizados quando a internet voltar.");
+      }
+      function onBecameOnline() {
+        offlinePopupShown = false;
+        if (IS_FILE_ORIGIN) {
+          if (badge) badge.textContent = "🟢 Online (sync desativado em file://)";
+          return;
+        }
+        if (badge) badge.textContent = "🟢 Online — sincronizando...";
+        syncQueue({ silentIfEmpty: true, showPopups: false });
+      }
+
+      function closeSheet() {
+        sheetBackdrop.style.display = "none";
+        sheet.style.display = "none";
+      }
+      sheetBackdrop.addEventListener("click", closeSheet);
+      sheetClose.addEventListener("click", closeSheet);
+
+      function setLayerVisible(layerId, visible) {
+        if (!map?.getLayer(layerId)) return;
+        map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+      }
+
+      function wireToggles() {
+        elToggleCTOs?.addEventListener("change", () => {
+          const on = elToggleCTOs.checked;
+          setLayerVisible("ctos-glow", on);
+          setLayerVisible("ctos-x-outline", on);
+          setLayerVisible("ctos-x", on);
+          setLayerVisible("ctos-x-blink-outline", on);
+          setLayerVisible("ctos-x-blink", on);
         });
+        elToggleCaixas?.addEventListener("change", () => {
+          const on = elToggleCaixas.checked;
+          setLayerVisible("caixas-outline", on);
+          setLayerVisible("caixas-layer", on);
+        });
+        elToggleRotas?.addEventListener("change", () => setLayerVisible("rotas-layer", elToggleRotas.checked));
+      }
 
-        await loadCTOS();
-      });
-    }
+      
+      // =========================
+      // AUTH (Login via Worker)
+      // =========================
+      const AUTH_TOKEN_KEY = "ftth_token";
+      const AUTH_USER_KEY  = "ftth_auth_user";
+      const AUTH_ROLE_KEY  = "ftth_auth_role";
+
+      function getAuthToken(){ return localStorage.getItem(AUTH_TOKEN_KEY) || ""; }
+      function getAuthUser(){ return localStorage.getItem(AUTH_USER_KEY) || ""; }
+
+      function getAuthRole(){ return localStorage.getItem(AUTH_ROLE_KEY) || "user"; }
+function applyPermissionsToUI(){
+  const role = (typeof getAuthRole === "function") ? getAuthRole() : "user";
+  const isAdmin = role === "admin";
+  document.documentElement.dataset.role = role;
+  // Esconde tudo marcado como admin-only
+  document.querySelectorAll("[data-requires-admin]").forEach((el)=>{
+    el.style.display = isAdmin ? "" : "none";
   });
 }
 
-async function loadCTOS(){
-  const res=await fetch(API+"/api/ctos",{credentials:"include"});
-  const geo=await res.json();
+      function setAuth(token, user, role){
+        if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+        if (user)  localStorage.setItem(AUTH_USER_KEY, user);
+        if (role)  localStorage.setItem(AUTH_ROLE_KEY, role);
+      }
 
-  if(map.getSource("ctos")) map.getSource("ctos").setData(geo);
-  else{
-    map.addSource("ctos",{type:"geojson",data:geo});
+      function clearAuth(){
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_ROLE_KEY);
+        // mantém o nome do user salvo para facilitar o próximo login
+      }
+
+      function showLogin(msg){
+        const el = document.getElementById("login-screen");
+        const err = document.getElementById("login-error");
+        if (err) err.textContent = msg || "";
+        if (el) {
+          el.classList.add("show");
+          el.setAttribute("aria-hidden", "false");
+        }
+        // Prefill
+        const u = document.getElementById("login-user");
+        if (u && !u.value) u.value = getAuthUser() || localStorage.getItem("ftth_user") || "";
+        setTimeout(()=> document.getElementById("login-user")?.focus(), 50);
+      }
+
+      function hideLogin(){
+        const el = document.getElementById("login-screen");
+        const err = document.getElementById("login-error");
+        if (err) err.textContent = "";
+        if (el) {
+          el.classList.remove("show");
+          el.setAttribute("aria-hidden", "true");
+        }
+      }
+
+      function authHeaders(extra={}){
+        const t = getAuthToken();
+        const h = { ...extra };
+        if (t) h["Authorization"] = "Bearer " + t;
+        return h;
+      }
+
+      // ===== Admin CRUD (CTOs / Rotas / CE-CDO) =====
+function assertAdmin(){
+  const role = getAuthRole();
+  if (role !== "admin"){
+    showPopup("Sem permissão", "Apenas administradores podem alterar CTOs, Rotas e CE/CDO.");
+    return false;
+  }
+  return true;
+}
+
+async function adminCrud(path, method, payload){
+  if (!assertAdmin()) return null;
+  const res = await authFetch(`${window.WORKER_URL}${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+  const text = await res.text();
+  let data = null;
+  try{ data = JSON.parse(text); }catch(_){ data = { raw: text }; }
+  if (!res.ok){
+    const msg = data?.error ? String(data.error) : `HTTP ${res.status}`;
+    showPopup("Erro", msg);
+    return null;
+  }
+  return data;
+}
+
+function promptJson(title, exampleObj){
+  const ex = exampleObj ? JSON.stringify(exampleObj, null, 2) : "{\n  \n}";
+  const raw = prompt(title + "\nCole um JSON válido:", ex);
+  if (raw == null) return null;
+  try{
+    return JSON.parse(raw);
+  }catch(e){
+    showPopup("JSON inválido", String(e));
+    return null;
+  }
+}
+
+async function adminAddCTO(){
+  const payload = promptJson("Adicionar/Atualizar CTO (POST /api/ctos)", { cto_id: "CTO001", nome: "CTO 001", lat: -22.0, lng: -41.0 });
+  if (!payload) return;
+  const r = await adminCrud("/api/ctos", "POST", payload);
+  if (r) { showPopup("OK", "CTO enviado."); try{ refreshAllData(); }catch(_){ } }
+}
+async function adminDelCTO(){
+  const payload = promptJson("Remover CTO (DELETE /api/ctos) — informe o identificador", { cto_id: "CTO001" });
+  if (!payload) return;
+  const r = await adminCrud("/api/ctos", "DELETE", payload);
+  if (r) { showPopup("OK", "CTO removido."); try{ refreshAllData(); }catch(_){ } }
+}
+
+async function adminAddRota(){
+  const payload = promptJson("Adicionar/Atualizar Rota (POST /api/rotas_fibras)", { rota_id: "R001", nome: "Rota 001", geojson: "{...}" });
+  if (!payload) return;
+  const r = await adminCrud("/api/rotas_fibras", "POST", payload);
+  if (r) { showPopup("OK", "Rota enviada."); try{ refreshAllData(); }catch(_){ } }
+}
+async function adminDelRota(){
+  const payload = promptJson("Remover Rota (DELETE /api/rotas_fibras) — informe o identificador", { rota_id: "R001" });
+  if (!payload) return;
+  const r = await adminCrud("/api/rotas_fibras", "DELETE", payload);
+  if (r) { showPopup("OK", "Rota removida."); try{ refreshAllData(); }catch(_){ } }
+}
+
+async function adminAddCECDO(){
+  const payload = promptJson("Adicionar/Atualizar CE/CDO (POST /api/caixas_emenda_cdo)", { id: "CE001", nome: "CE 001", lat: -22.0, lng: -41.0, tipo: "CE" });
+  if (!payload) return;
+  const r = await adminCrud("/api/caixas_emenda_cdo", "POST", payload);
+  if (r) { showPopup("OK", "CE/CDO enviado."); try{ refreshAllData(); }catch(_){ } }
+}
+async function adminDelCECDO(){
+  const payload = promptJson("Remover CE/CDO (DELETE /api/caixas_emenda_cdo) — informe o identificador", { id: "CE001" });
+  if (!payload) return;
+  const r = await adminCrud("/api/caixas_emenda_cdo", "DELETE", payload);
+  if (r) { showPopup("OK", "CE/CDO removido."); try{ refreshAllData(); }catch(_){ } }
+}
+
+// Tenta chamar uma função de refresh que já exista no seu app
+function refreshAllData(){
+  // nomes comuns (ajuste se você já tiver um)
+  if (typeof reloadAll === "function") return reloadAll();
+  if (typeof reloadData === "function") return reloadData();
+  if (typeof refreshLayers === "function") return refreshLayers();
+  if (typeof loadAllData === "function") return loadAllData();
+  // fallback: recarrega a página
+  location.reload();
+}
+
+// ===== Admin Modal UI + Add by Map Click =====
+let __pickMode = null;
+      let __lastAdminTab = "cto";
+      let __reopenAdminAfterPick = true; // { kind: 'cto'|'ce' }
+
+function qs(id){ return document.getElementById(id); }
+
+function getApiBase(){
+  // Configure via window.API_BASE = "https://<your-worker>.workers.dev"
+  return (window.API_BASE && String(window.API_BASE).trim()) ? String(window.API_BASE).trim().replace(/\/$/,"") : "";
+}
+
+
+function openAdminModal(tab){
+  if (!assertAdmin()) return;
+  const b = qs("adminModalBackdrop");
+  if (!b) return;
+  b.style.display = "flex";
+  b.setAttribute("aria-hidden","false");
+  switchAdminTab(tab || "cto");
+}
+function closeAdminModal(){
+  const b = qs("adminModalBackdrop");
+  if (!b) return;
+  b.style.display = "none";
+  b.setAttribute("aria-hidden","true");
+}
+function switchAdminTab(tab){
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.classList.toggle("active", t.dataset.tab === tab);
+  });
+  document.querySelectorAll(".panel").forEach(p=>{
+    p.style.display = (p.dataset.panel === tab) ? "" : "none";
+  });
+}
+
+async function reverseGeocode(lat, lng){
+  try{
+    const base = getApiBase();
+    const url = `${base}/api/reverse_geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
+    const res = await apiFetch(url, { method: "GET" });
+    if (!res.ok) return null;
+    const data = await res.json().catch(()=>null);
+    if (!data || !data.ok) return null;
+    return { rua: data.rua || "", bairro: data.bairro || "", raw: data.raw || null };
+  }catch(_){
+    return null;
+  }
+}
+
+
+function setPickBanner(on){
+  const el = qs("pickBanner");
+  if (!el) return;
+  el.style.display = on ? "block" : "none";
+}
+
+function startPick(kind, opts){
+  if (!assertAdmin()) return;
+  const options = opts || {};
+  __pickMode = { kind, autoSave: !!options.autoSave };
+  setPickBanner(true);
+  // fecha o modal para liberar o clique no mapa
+  closeAdminModal();
+  showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
+}
+
+
+async function applyPickedLngLatAsync(lng, lat){
+  if (!__pickMode) return false;
+  const k = __pickMode.kind;
+
+  // Preenche lat/lng
+  if (k === "cto"){
+    if (qs("cto_lat")) qs("cto_lat").value = String(lat);
+    if (qs("cto_lng")) qs("cto_lng").value = String(lng);
+  } else if (k === "ce"){
+    if (qs("ce_lat")) qs("ce_lat").value = String(lat);
+    if (qs("ce_lng")) qs("ce_lng").value = String(lng);
+  }
+
+  // Busca rua/bairro
+  const geo = await reverseGeocode(lat, lng);
+  if (geo){
+    if (k === "cto"){
+      if (qs("cto_rua") && !qs("cto_rua").value) qs("cto_rua").value = geo.rua || "";
+      if (qs("cto_bairro") && !qs("cto_bairro").value) qs("cto_bairro").value = geo.bairro || "";
+    } else if (k === "ce"){
+      if (qs("ce_rua") && !qs("ce_rua").value) qs("ce_rua").value = geo.rua || "";
+      if (qs("ce_bairro") && !qs("ce_bairro").value) qs("ce_bairro").value = geo.bairro || "";
+    }
+  }
+
+    // se autoSave estiver ligado, tenta salvar imediatamente
+  const auto = !!(__pickMode && __pickMode.autoSave);
+
+  // encerra pick mode
+  __pickMode = null;
+  setPickBanner(false);
+
+  if (auto){
+    if (k === "cto"){
+      // Se ID estiver vazio, gera um ID simples para inclusão rápida
+      if (qs("cto_id") && !String(qs("cto_id").value||"").trim()){
+        const id = "CTO" + String(Date.now()).slice(-6);
+        qs("cto_id").value = id;
+        if (qs("cto_nome") && !String(qs("cto_nome").value||"").trim()) qs("cto_nome").value = id;
+      }
+      const payload = buildCTOPayload();
+      if (!payload){ openAdminModal("cto"); return true; }
+      const r = await adminCrud("/api/ctos", "POST", payload);
+      if (r){
+        showPopup("OK", "CTO adicionada.");
+        refreshAllData();
+        return true;
+      }
+      // se falhar, reabre modal para revisar
+      openAdminModal("cto");
+      return true;
+    } else if (k === "ce"){
+      if (qs("ce_id") && !String(qs("ce_id").value||"").trim()){
+        const id = "CE" + String(Date.now()).slice(-6);
+        qs("ce_id").value = id;
+        if (qs("ce_nome") && !String(qs("ce_nome").value||"").trim()) qs("ce_nome").value = id;
+      }
+      const payload = buildCEPayload();
+      if (!payload){ openAdminModal("ce"); return true; }
+      const r = await adminCrud("/api/caixas_emenda_cdo", "POST", payload);
+      if (r){
+        showPopup("OK", "CE/CDO adicionada.");
+        refreshAllData();
+        return true;
+      }
+      openAdminModal("ce");
+      return true;
+    }
+  }
+
+  // reabre o modal na aba usada (modo manual)
+  if (__reopenAdminAfterPick){
+    if (k === "cto") openAdminModal("cto");
+    else if (k === "ce") openAdminModal("ce");
+    else openAdminModal(__lastAdminTab || "cto");
+  }
+  return true;
+}
+
+function applyPickedLngLat(lng, lat){
+  // retorna false se não estiver em modo captura
+  if (!__pickMode) return false;
+  applyPickedLngLatAsync(lng, lat);
+  return true;
+}
+
+
+
+function numOrStr(v){
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  const n = Number(s.replace(",", "."));
+  return Number.isFinite(n) ? n : s;
+}
+
+function buildCTOPayload(){
+  const cto_id = String(qs("cto_id")?.value || "").trim();
+  if (!cto_id){ showPopup("Campo obrigatório", "Informe o CTO ID."); return null; }
+  return {
+    cto_id,
+    nome: String(qs("cto_nome")?.value || "").trim(),
+    lat: numOrStr(qs("cto_lat")?.value),
+    lng: numOrStr(qs("cto_lng")?.value),
+  };
+}
+function buildCEPayload(){
+  const id = String(qs("ce_id")?.value || "").trim();
+  if (!id){ showPopup("Campo obrigatório", "Informe o ID da CE/CDO."); return null; }
+  return {
+    id,
+    tipo: String(qs("ce_tipo")?.value || "CE"),
+    nome: String(qs("ce_nome")?.value || "").trim(),
+    obs: String(qs("ce_obs")?.value || "").trim(),
+    lat: numOrStr(qs("ce_lat")?.value),
+    lng: numOrStr(qs("ce_lng")?.value),
+  };
+}
+function buildRotaPayload(){
+  const rota_id = String(qs("rota_id")?.value || "").trim();
+  if (!rota_id){ showPopup("Campo obrigatório", "Informe o Rota ID."); return null; }
+  const geojsonRaw = String(qs("rota_geojson")?.value || "").trim();
+  if (!geojsonRaw){ showPopup("Campo obrigatório", "Cole o GeoJSON da rota."); return null; }
+  // tenta validar JSON
+  let geojson = geojsonRaw;
+  try{ geojson = JSON.parse(geojsonRaw); }catch(_){}
+  return {
+    rota_id,
+    nome: String(qs("rota_nome")?.value || "").trim(),
+    geojson
+  };
+}
+
+async function modalSaveCTO(){
+  const payload = buildCTOPayload();
+  if (!payload) return;
+  const r = await adminCrud("/api/ctos", "POST", payload);
+  if (r){ showPopup("OK", "CTO salvo."); closeAdminModal(); refreshAllData(); }
+}
+async function modalDelCTO(){
+  const cto_id = String(qs("cto_id")?.value || "").trim();
+  if (!cto_id){ showPopup("Campo obrigatório", "Informe o CTO ID."); return; }
+  const r = await adminCrud("/api/ctos", "DELETE", { cto_id });
+  if (r){ showPopup("OK", "CTO removido."); closeAdminModal(); refreshAllData(); }
+}
+async function modalSaveCE(){
+  const payload = buildCEPayload();
+  if (!payload) return;
+  const r = await adminCrud("/api/caixas_emenda_cdo", "POST", payload);
+  if (r){ showPopup("OK", "CE/CDO salvo."); closeAdminModal(); refreshAllData(); }
+}
+async function modalDelCE(){
+  const id = String(qs("ce_id")?.value || "").trim();
+  if (!id){ showPopup("Campo obrigatório", "Informe o ID."); return; }
+  const r = await adminCrud("/api/caixas_emenda_cdo", "DELETE", { id });
+  if (r){ showPopup("OK", "CE/CDO removido."); closeAdminModal(); refreshAllData(); }
+}
+async function modalSaveRota(){
+  const payload = buildRotaPayload();
+  if (!payload) return;
+  const r = await adminCrud("/api/rotas_fibras", "POST", payload);
+  if (r){ showPopup("OK", "Rota salva."); closeAdminModal(); refreshAllData(); }
+}
+async function modalDelRota(){
+  const rota_id = String(qs("rota_id")?.value || "").trim();
+  if (!rota_id){ showPopup("Campo obrigatório", "Informe o Rota ID."); return; }
+  const r = await adminCrud("/api/rotas_fibras", "DELETE", { rota_id });
+  if (r){ showPopup("OK", "Rota removida."); closeAdminModal(); refreshAllData(); }
+}
+
+// ===== Editar ao clicar em um item no mapa (admin) =====
+function normalizeId(props, keys){
+  for (const k of keys){
+    if (props && props[k] != null && String(props[k]).trim() !== "") return String(props[k]).trim();
+  }
+  return "";
+}
+
+function fillCTOFromProps(props, lngLat){
+  qs("cto_id").value = normalizeId(props, ["cto_id","CTO_ID","id","ID","cto","CTO"]);
+  qs("cto_nome").value = String(props.nome || props.NOME || props.name || props.NAME || "").trim();
+  if (lngLat){
+    qs("cto_lat").value = String(lngLat.lat);
+    qs("cto_lng").value = String(lngLat.lng);
+  } else {
+    const lat = props.lat ?? props.LAT ?? props.latitude ?? props.LATITUDE;
+    const lng = props.lng ?? props.LNG ?? props.lon ?? props.LON ?? props.longitude ?? props.LONGITUDE;
+    if (lat!=null) qs("cto_lat").value = String(lat);
+    if (lng!=null) qs("cto_lng").value = String(lng);
+  }
+  openAdminModal("cto");
+}
+
+function fillCEFromProps(props, lngLat){
+  qs("ce_id").value = normalizeId(props, ["id","ID","ce_id","CE_ID","cdo_id","CDO_ID"]);
+  qs("ce_tipo").value = String(props.tipo || props.TIPO || "CE").toUpperCase() === "CDO" ? "CDO" : "CE";
+  qs("ce_nome").value = String(props.nome || props.NOME || props.name || "").trim();
+  qs("ce_obs").value = String(props.obs || props.OBS || props.observacao || props.Observacao || "").trim();
+  if (lngLat){
+    qs("ce_lat").value = String(lngLat.lat);
+    qs("ce_lng").value = String(lngLat.lng);
+  } else {
+    const lat = props.lat ?? props.LAT ?? props.latitude ?? props.LATITUDE;
+    const lng = props.lng ?? props.LNG ?? props.lon ?? props.LON ?? props.longitude ?? props.LONGITUDE;
+    if (lat!=null) qs("ce_lat").value = String(lat);
+    if (lng!=null) qs("ce_lng").value = String(lng);
+  }
+  openAdminModal("ce");
+}
+
+function fillRotaFromProps(props){
+  qs("rota_id").value = normalizeId(props, ["rota_id","ROTA_ID","id","ID"]);
+  qs("rota_nome").value = String(props.nome || props.NOME || props.name || "").trim();
+  // Se existir geojson na feature, tenta preencher
+  const gj = props.geojson || props.GEOJSON || props.geometry || props.GEOMETRY;
+  if (gj){
+    try{ qs("rota_geojson").value = JSON.stringify(typeof gj === "string" ? JSON.parse(gj) : gj, null, 2); }
+    catch(_){ qs("rota_geojson").value = String(gj); }
+  }
+  openAdminModal("rota");
+}
+
+function enableFeatureEditOnClick(map){
+  // Evita múltiplos binds
+  if (map.__ftthEditOnClickBound) return;
+  map.__ftthEditOnClickBound = true;
+
+  map.on("click", (e)=>{
+    try{
+      // se estiver em pickMode (lat/lng), deixa o handler existente consumir primeiro
+      if (__pickMode) return;
+      // se estiver desenhando rota, não abrir modal de edição
+      if (__drawRota && __drawRota.active) return;
+      if (getAuthRole() !== "admin") return;
+
+      // pega feature mais "provável" sob o clique
+      const features = map.queryRenderedFeatures(e.point) || [];
+      if (!features.length) return;
+
+      // tenta classificar por propriedades conhecidas
+      let best = null;
+      for (const f of features){
+        const p = f.properties || {};
+        if (!best) best = f;
+        // prioridade: CTO
+        if (p.cto_id || p.CTO_ID || p.cto || p.CTO) { best = f; break; }
+      }
+
+      const p = (best && best.properties) ? best.properties : {};
+      // Heurística de entidade
+      const hasCTO = !!(p.cto_id || p.CTO_ID || p.cto || p.CTO);
+      const hasCE  = !!(p.tipo || p.TIPO || p.ce_id || p.CE_ID || p.cdo_id || p.CDO_ID || p.ce || p.CE);
+      const hasRota = !!(p.rota_id || p.ROTA_ID || (best && (best.geometry?.type || "")).includes("Line"));
+
+      if (hasCTO){
+        fillCTOFromProps(p, e.lngLat);
+      } else if (hasRota){
+        fillRotaFromProps(p);
+      } else if (hasCE){
+        fillCEFromProps(p, e.lngLat);
+      } else {
+        // fallback: se for ponto, assume CE/CTO dependendo de 'layer/source' name
+        const layerId = best.layer && best.layer.id ? String(best.layer.id) : "";
+        if (/cto/i.test(layerId)) fillCTOFromProps(p, e.lngLat);
+        else if (/rota/i.test(layerId)) fillRotaFromProps(p);
+        else if (/caixa|cdo|ce/i.test(layerId)) fillCEFromProps(p, e.lngLat);
+      }
+    } catch(_){}
+  });
+}
+
+// ===== Desenhar rota no mapa (admin) =====
+let __drawRota = { active:false, points:[], markers:[], sourceId:"__draw_rota_src", layerId:"__draw_rota_layer" };
+
+function setRotaDrawButtons(active){
+  const undo = qs("btnRotaUndo"), cancel = qs("btnRotaCancel"), finish = qs("btnRotaFinish"), draw = qs("btnDrawRota");
+  if (undo) undo.style.display = active ? "" : "none";
+  if (cancel) cancel.style.display = active ? "" : "none";
+  if (finish) finish.style.display = active ? "" : "none";
+  if (draw) draw.style.display = active ? "none" : "";
+}
+
+function ensureDrawLayer(map){
+  const srcId = __drawRota.sourceId, layerId = __drawRota.layerId;
+  if (!map.getSource(srcId)){
+    map.addSource(srcId, {
+      type:"geojson",
+      data: { type:"FeatureCollection", features: [] }
+    });
+  }
+  if (!map.getLayer(layerId)){
     map.addLayer({
-      id:"ctos-layer",
-      type:"circle",
-      source:"ctos",
-      paint:{"circle-radius":6,"circle-color":"#ff0000"}
+      id: layerId,
+      type: "line",
+      source: srcId,
+      paint: {
+        "line-width": 4,
+        "line-opacity": 0.9
+      }
     });
   }
 }
-</script>
+
+function updateDrawLine(map){
+  const src = map.getSource(__drawRota.sourceId);
+  if (!src) return;
+  const coords = __drawRota.points.map(p=>[p.lng,p.lat]);
+  const feature = (coords.length >= 2) ? {
+    type:"Feature",
+    properties:{},
+    geometry:{ type:"LineString", coordinates: coords }
+  } : null;
+  src.setData({
+    type:"FeatureCollection",
+    features: feature ? [feature] : []
+  });
+}
+
+function clearDrawMarkers(){
+  try{
+    for (const m of __drawRota.markers){ m.remove(); }
+  }catch(_){}
+  __drawRota.markers = [];
+}
+
+function startDrawRota(){
+  if (!assertAdmin()) return;
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  if (!map){ showPopup("Erro", "Mapa não inicializado."); return; }
+
+  __drawRota.active = true;
+  __drawRota.points = [];
+  clearDrawMarkers();
+  setRotaDrawButtons(true);
+  setPickBanner(true);
+  qs("pickBanner").textContent = "🧵 Clique no mapa para adicionar pontos da rota. Concluir quando terminar.";
+  openAdminModal("rota");
+
+  // garante camada
+  if (!map.isStyleLoaded()){
+    map.once("load", ()=>{ ensureDrawLayer(map); updateDrawLine(map); });
+  } else {
+    ensureDrawLayer(map); updateDrawLine(map);
+  }
+
+  // bind click handler uma única vez
+  if (!map.__ftthDrawRotaBound){
+    map.__ftthDrawRotaBound = true;
+    map.on("click", (e)=>{
+      if (!__drawRota.active) return;
+      __drawRota.points.push({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+      // marker
+      try{
+        const el = document.createElement("div");
+        el.className = "draw-point";
+        const mk = new maplibregl.Marker({ element: el }).setLngLat(e.lngLat).addTo(map);
+        __drawRota.markers.push(mk);
+      }catch(_){}
+      updateDrawLine(map);
+    });
+  }
+}
+
+function undoDrawRota(){
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  if (!map) return;
+  if (!__drawRota.active) return;
+  __drawRota.points.pop();
+  try{
+    const mk = __drawRota.markers.pop();
+    if (mk) mk.remove();
+  }catch(_){}
+  updateDrawLine(map);
+}
+
+function cancelDrawRota(){
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  __drawRota.active = false;
+  __drawRota.points = [];
+  clearDrawMarkers();
+  setRotaDrawButtons(false);
+  setPickBanner(false);
+  if (qs("pickBanner")) qs("pickBanner").textContent = "📍 Clique no mapa para capturar a posição…";
+  if (map && map.getSource(__drawRota.sourceId)){
+    try{ map.getSource(__drawRota.sourceId).setData({ type:"FeatureCollection", features:[] }); }catch(_){}
+  }
+}
+
+function finishDrawRota(){
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  if (!map) return;
+  if (!__drawRota.active) return;
+  if (__drawRota.points.length < 2){
+    showPopup("Rota incompleta", "Adicione pelo menos 2 pontos.");
+    return;
+  }
+  const coords = __drawRota.points.map(p=>[p.lng,p.lat]);
+  const gj = { type:"Feature", properties:{}, geometry:{ type:"LineString", coordinates: coords } };
+  qs("rota_geojson").value = JSON.stringify(gj, null, 2);
+  __drawRota.active = false;
+  setRotaDrawButtons(false);
+  setPickBanner(false);
+  if (qs("pickBanner")) qs("pickBanner").textContent = "📍 Clique no mapa para capturar a posição…";
+  showPopup("OK", "GeoJSON preenchido no formulário. Agora clique em Salvar.");
+}
+
+function bindAdminModal(){
+  const openBtn = qs("btnOpenAdmin");
+  if (openBtn) openBtn.addEventListener("click", ()=>openAdminModal("cto"));
+
+  const closeBtn = qs("adminModalClose");
+  if (closeBtn) closeBtn.addEventListener("click", closeAdminModal);
+
+  const backdrop = qs("adminModalBackdrop");
+  if (backdrop) backdrop.addEventListener("click", (e)=>{
+    if (e.target === backdrop) closeAdminModal();
+  });
+
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.addEventListener("click", ()=>switchAdminTab(t.dataset.tab));
+  });
+
+  qs("btnModalAddCTO")?.addEventListener("click", modalSaveCTO);
+  qs("btnModalDelCTO")?.addEventListener("click", modalDelCTO);
+  qs("btnModalAddCE")?.addEventListener("click", modalSaveCE);
+  qs("btnModalDelCE")?.addEventListener("click", modalDelCE);
+  qs("btnModalAddRota")?.addEventListener("click", modalSaveRota);
+  qs("btnModalDelRota")?.addEventListener("click", modalDelRota);
+
+  qs("btnPickCTO")?.addEventListener("click", ()=>startPick("cto", { autoSave: true }));
+  qs("btnPickCE")?.addEventListener("click", ()=>startPick("ce", { autoSave: true }));;
+}
+
+
+async function authFetch(url, opts={}){
+        const headers = authHeaders(opts.headers || {});
+        const res = await fetch(url, { ...opts, headers });
+        if (res.status === 401){
+          // token inválido/expirado
+          clearAuth();
+          showLogin("Sessão expirada. Faça login novamente.");
+        }
+        return res;
+      }
+
+      async function fetchMeRole(){
+  try{
+    const res = await authFetch(`${window.WORKER_URL}/api/me`);
+    if (!res.ok) return null;
+    const data = await res.json().catch(()=>null);
+    const role = String((data?.user?.role ?? data?.role ?? "user")).toLowerCase();
+    localStorage.setItem(AUTH_ROLE_KEY, role);
+    return role;
+  }catch(_){ return null; }
+}
+
+async function doLogin(){
+        const btn = document.getElementById("login-btn");
+        const err = document.getElementById("login-error");
+        const uEl = document.getElementById("login-user");
+        const pEl = document.getElementById("login-pass");
+
+        const user = (uEl?.value || "").trim();
+        const password = (pEl?.value || "").trim();
+
+        if (!user || !password){
+          if (err) err.textContent = "Informe usuário e senha.";
+          return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = "Entrando..."; }
+        if (err) err.textContent = "";
+
+        try{
+          const res = await fetch(`${window.WORKER_URL}/api/login`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ user, password })
+          });
+          const data = await res.json().catch(()=> ({}));
+          if (data && data.ok && data.token){
+            setAuth(data.token, (data.user?.username || user), String((data.user?.role ?? data.role ?? "user")).toLowerCase());
+            // mantém compat com fluxo antigo
+            localStorage.setItem("ftth_user", user);
+            hideLogin();
+            const el = document.getElementById('userName');
+            if (el) el.textContent = user;
+            // inicia app
+            if (!window.__APP_STARTED__){
+              window.__APP_STARTED__ = true;
+              document.getElementById("login-btn")?.addEventListener("click", doLogin);
+      document.getElementById("login-pass")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+      document.getElementById("login-user")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+
+      // Start only if authenticated
+      if (!checkAuthOrShowLogin()) return;
+// best-effort: atualiza role via /api/me e atualiza pill
+fetchMeRole().then(()=>{
+  const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+  const el = document.getElementById('userName');
+  if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
+});
+window.__APP_STARTED__ = true;
+initMap();
+}
+            // limpa senha do campo
+            if (pEl) pEl.value = "";
+          } else {
+            if (err) err.textContent = "Usuário ou senha inválidos.";
+          }
+        }catch(e){
+          if (err) err.textContent = "Falha ao conectar. Verifique sua internet.";
+        } finally{
+          if (btn) { btn.disabled = false; btn.textContent = "Entrar"; }
+        }
+      }
+
+      async function doLogout(){
+  try{
+    const token = getAuthToken();
+    if (token){
+      await fetch(`${window.WORKER_URL}/api/logout`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": "Bearer " + token
+        }
+      }).catch(()=>{});
+    }
+  } finally {
+    clearAuth();
+    // volta pro login e reinicia a página para limpar estado do mapa
+    location.reload();
+  }
+}
+
+      // __bindLogout__
+      bindAdminModal();
+(function(){
+  const btn = document.getElementById("btnLogout");
+  if (btn) btn.addEventListener("click", () => { doLogout(); });
+})();
+
+function checkAuthOrShowLogin(){
+        const token = getAuthToken();
+        if (!token){
+          showLogin("");
+          return false;
+        }
+        hideLogin();
+        const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+        const el = document.getElementById('userName');
+        if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
+        applyPermissionsToUI();
+        return true;
+      }
+
+async function fetchJSON(path) {
+        const res = await authFetch(`${window.WORKER_URL}${path}`);
+        if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+        return await res.json();
+      }
+
+      function unwrapArray(resp){
+        if (Array.isArray(resp)) return resp;
+        if (resp && Array.isArray(resp.items)) return resp.items;
+        if (resp && Array.isArray(resp.data)) return resp.data;
+        if (resp && resp.data && Array.isArray(resp.data.items)) return resp.data.items;
+        return [];
+      }
+
+
+      function openExternalNav(lng, lat, label) {
+        const ll = `${lat},${lng}`;
+        const q = encodeURIComponent(label || "Destino");
+        // iOS: Apple Maps works well; Android: Google Maps. We can offer both, default by platform.
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+        const apple = `https://maps.apple.com/?daddr=${encodeURIComponent(ll)}&q=${q}`;
+        const google = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ll)}&destination_place_id=&travelmode=driving`;
+
+        // Open best first; also show alternative in sheet
+        window.open(isIOS ? apple : google, "_blank", "noopener");
+      }
+
+      function showSelectedSheet() {
+        if (!selected) {
+          openSheet("Nenhuma seleção", "Toque em uma CTO/caixa/rota no mapa.", `<div class="hint">Dica: use 📍 para achar sua posição.</div>`);
+          return;
+        }
+
+        const { type, props, lngLat } = selected;
+
+        if (type === "cto") {
+          const ctoId = String(props.cto_id || "").trim();
+          const title = `CTO ${ctoId || ""}`;
+          const subtitle = `📌 ${props.bairro || ""} • ${props.rua || ""}`;
+
+          const online = (onlineClientsByCto.get(ctoId) || []);
+          const hist = (movByCto.get(ctoId) || []);
+
+          const onlineHTML = online.length ? `
+            <div style="margin-top:12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="font-weight:800;">🟢 Clientes online (${online.length})</div>
+                <div class="badge">última ação por cliente</div>
+              </div>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+                ${online.slice(0, 25).map((c) => `
+                  <div style="border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                      <div><b>${escapeHTML(c.cliente)}</b></div>
+                      <div class="badge">${escapeHTML(fmtTs(c.last_ts))}</div>
+                    </div>
+                    <div class="hint">Ação: <b>${escapeHTML(String(c.last_tipo||""))}</b>${c.usuario ? ` • por <b>${escapeHTML(c.usuario)}</b>` : ""}</div>
+                    ${c.obs ? `<div class="hint">📝 ${escapeHTML(c.obs)}</div>` : ``}
+                  </div>
+                `).join("")}
+                ${online.length > 25 ? `<div class="hint">Mostrando 25 de ${online.length}.</div>` : ``}
+              </div>
+            </div>
+          ` : `
+            <div style="margin-top:12px;">
+              <div style="font-weight:800;">🟢 Clientes online (0)</div>
+              <div class="hint">Nenhum cliente “online” encontrado para esta CTO (baseado na última movimentação por cliente).</div>
+            </div>
+          `;
+
+          const histHTML = hist.length ? `
+            <div style="margin-top:14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="font-weight:800;">🧾 Histórico (${hist.length})</div>
+                <div class="badge">mais recente primeiro</div>
+              </div>
+              <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+                ${hist.slice(0, 30).map((h) => `
+                  <div style="border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                      <div><b>${escapeHTML(String(h.tipo||""))}</b>${h.cliente ? ` • ${escapeHTML(h.cliente)}` : ""}</div>
+                      <div class="badge">${escapeHTML(fmtTs(h.ts))}</div>
+                    </div>
+                    <div class="hint">${h.usuario ? `👤 ${escapeHTML(h.usuario)}` : "👤 -"}${h.obs ? ` • 📝 ${escapeHTML(h.obs)}` : ""}</div>
+                  </div>
+                `).join("")}
+                ${hist.length > 30 ? `<div class="hint">Mostrando 30 de ${hist.length}.</div>` : ``}
+              </div>
+            </div>
+          ` : `
+            <div style="margin-top:14px;">
+              <div style="font-weight:800;">🧾 Histórico (0)</div>
+              <div class="hint">Ainda não há registros de movimentação para esta CTO.</div>
+            </div>
+          `;
+
+          const body = `
+            <div class="btnRow">
+              <button class="btn btnBlue" id="goNav">🧭 Navegar</button>
+              <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
+            </div>
+            <div class="hint">Capacidade: <b>${props.capacidade ?? ""}</b></div>
+            ${onlineHTML}
+            ${histHTML}
+          `;
+          openSheet(title, subtitle, body);
+          document.getElementById("goNav").onclick = () => openExternalNav(lngLat.lng, lngLat.lat, title);
+          document.getElementById("goReg").onclick = () => openRegistro("MOVIMENTACOES", ctoId || "");
+          return;
+        }
+
+
+        if (type === "caixa") {
+          const title = `${props.tipo || "Caixa"} ${props.id || ""}`;
+          const subtitle = props.obs ? `📝 ${escapeHTML(props.obs)}` : `📌 ${props.dt_criacao || ""}`;
+          const img = props.img_url ? `<a href="${props.img_url}" target="_blank" rel="noopener">Ver imagem</a>` : "";
+          const body = `
+            <div class="btnRow">
+              <button class="btn btnBlue" id="goNav">🧭 Navegar</button>
+              <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
+            </div>
+            <div class="hint">${img}</div>
+            <div class="hint">Criado: ${props.dt_criacao || ""}<br>Atualizado: ${props.dt_atualizacao || ""}</div>
+          `;
+          openSheet(title, subtitle, body);
+          document.getElementById("goNav").onclick = () => openExternalNav(lngLat.lng, lngLat.lat, title);
+          document.getElementById("goReg").onclick = () => openRegistro("LOG_EVENTOS", `${props.tipo || "CAIXA"}:${props.id || ""}`);
+          return;
+        }
+
+        if (type === "rota") {
+          const title = `Rota ${props.rota_id || ""}`;
+          const subtitle = `Pontos: ${props.pontos || ""} • Tipos: ${escapeHTML(String(props.tipos || ""))}`;
+          const body = `
+            <div class="btnRow">
+              <button class="btn btnPrimary" id="goReg">✍️ Registrar</button>
+            </div>
+            <div class="hint">Peso médio: ${props.peso_medio || ""}</div>
+          `;
+          openSheet(title, subtitle, body);
+          document.getElementById("goReg").onclick = () => openRegistro("LOG_EVENTOS", `ROTA:${props.rota_id || ""}`);
+        }
+      }
+
+      function escapeHTML(s) {
+        return String(s ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function normTs(v) {
+        const s = String(v ?? "").trim();
+        if (!s) return "";
+        return s;
+      }
+      function pick(o, keys) {
+        for (const k of keys) {
+          if (o && o[k] != null && String(o[k]).trim() !== "") return o[k];
+        }
+        return "";
+      }
+      function normalizeMov(mv) {
+        const cto_id = String(pick(mv, ["cto_id","CTO_ID","cto","CTO","ctoId"])).trim();
+        const tipo = String(pick(mv, ["tipo","Tipo","action","ACTION"])).trim().toUpperCase();
+        const cliente = String(pick(mv, ["cliente","Cliente","client","CLIENTE"])).trim();
+        const usuario = String(pick(mv, ["usuario","Usuario","user","USER"])).trim();
+        const obs = String(pick(mv, ["observacao","Observacao","obs","OBS","details","DETAILS"])).trim();
+        const ts = normTs(pick(mv, ["data","DATA","ts","TS","created_at","createdAt","dt_criacao","dt","timestamp"]));
+        return { cto_id, tipo, cliente, usuario, obs, ts, raw: mv };
+      }
+      function fmtTs(ts) {
+        const s = String(ts || "");
+        if (!s) return "";
+        return s.replace("T"," ").slice(0,16);
+      }
+
+
+      // Registro (offline-first): salva em localStorage (fila) e mostra export
+      
+      async function ensureSubmitKey() {
+        const embedded = (window.SUBMIT_KEY || "").trim();
+        if (embedded) return embedded;
+
+        let k = localStorage.getItem("ftth_submit_key") || "";
+        if (!k) {
+          k = prompt("Chave de sincronização (SUBMIT_KEY):") || "";
+          k = k.trim();
+          if (k) localStorage.setItem("ftth_submit_key", k);
+        }
+        return k;
+      }
+
+      async function syncQueue(opts = {}) {
+        const { silentIfEmpty = false, showPopups = false } = opts;
+        if (IS_FILE_ORIGIN) {
+          if (badge) badge.textContent = "⚠️ Sync desativado em arquivo local (abra via https)";
+          if (showPopups) showPopup("Sync desativado", "Você está abrindo o app como arquivo local (file://). Para sincronizar sem erros de CORS, abra pelo endereço https do Pages.");
+          return;
+        }
+        const q = getQueue();
+        if (!q.length) {
+          if (!silentIfEmpty) {
+            if (badge) badge.textContent = "Sem pendências para sincronizar";
+            if (showPopups) showPopup("Sem pendências", "Não há registros pendentes para sincronizar.");
+          }
+          return;
+        }
+
+        if (!navigator.onLine) {
+          if (badge) badge.textContent = "🔴 Offline — pendências mantidas";
+          if (showPopups) onBecameOffline();
+          return;
+        }
+
+        const key = await ensureSubmitKey();
+        if (!key) {
+          if (badge) badge.textContent = "Sync cancelado (sem chave)";
+          if (showPopups) showPopup("Chave ausente", "SUBMIT_KEY não configurada no app.");
+          return;
+        }
+
+        let sent = 0;
+        let failed = 0;
+        const nextQueue = [];
+
+        if (badge) badge.textContent = `Sincronizando ${q.length}...`;
+
+        for (let i = 0; i < q.length; i++) {
+          const item = q[i];
+          try {
+            const res = await fetch(`${window.WORKER_URL}/api/submit`, {
+              method: "POST",
+              headers: authHeaders({ "content-type": "application/json" }),
+              body: JSON.stringify({ items: [item] })
+            });
+
+            const txt = await res.text();
+            let data = null;
+            try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
+
+            if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+            sent++;
+          } catch (err) {
+            failed++;
+            nextQueue.push({ ...item, last_error: String(err?.message ?? err), last_error_at: new Date().toISOString() });
+          }
+        }
+
+        setQueue(nextQueue);
+
+        if (failed === 0) {
+          if (badge) badge.textContent = `✅ Sync OK • enviados: ${sent}`;
+          if (showPopups) showPopup("Sincronizado", `Enviados: ${sent}.`);
+        } else {
+          if (badge) badge.textContent = `⚠️ Sync parcial • enviados: ${sent} • falhas: ${failed}`;
+          if (showPopups) showPopup("Sincronização parcial", `Enviados: ${sent}. Falharam: ${failed}. Os itens com falha continuam pendentes.`);
+        }
+      }
+
+function getQueue() {
+        try { return JSON.parse(localStorage.getItem("ftth_queue") || "[]"); } catch { return []; }
+      }
+      function setQueue(q) {
+        localStorage.setItem("ftth_queue", JSON.stringify(q));
+      }
+
+      function openPendentes() {
+        const q = getQueue();
+        const title = `Pendentes (${q.length})`;
+        if (!q.length) {
+          showPopup(title, "Nenhum registro pendente.");
+          return;
+        }
+
+        const rows = q.slice().reverse().map((it) => {
+          const kind = (it.kind || "").toUpperCase();
+          const ts = (it.ts || "").replace("T", " ").slice(0, 19);
+          const ref = it.ref || (it.payload && (it.payload.CTO_ID || it.payload.ENTITY_ID)) || "";
+          const err = it.last_error ? `<div class="hint">❌ ${escapeHTML(it.last_error)}</div>` : "";
+          return `
+            <div style="border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px;margin:8px 0;">
+              <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+                <div><b>${escapeHTML(kind || "ITEM")}</b> <span class="badge">${escapeHTML(ref)}</span></div>
+                <div class="badge">${escapeHTML(ts)}</div>
+              </div>
+              ${err}
+            </div>
+          `;
+        }).join("");
+
+        openSheet(
+          title,
+          "Registros salvos no aparelho. Use 🔄 para sincronizar.",
+          `
+            <div class="btnRow">
+              <button class="btn btnPrimary" id="btnSyncNow">🔄 Sincronizar agora</button>
+              <button class="btn btnWarn" id="btnClearQ">🗑️ Limpar fila</button>
+            </div>
+            <div class="hint">Limpar fila apaga registros pendentes deste aparelho.</div>
+            ${rows}
+          `
+        );
+
+        const sn = document.getElementById("btnSyncNow");
+        if (sn) sn.onclick = () => { closeSheet(); syncQueue({ silentIfEmpty: true, showPopups: true }); };
+
+        const cq = document.getElementById("btnClearQ");
+        if (cq) cq.onclick = () => {
+          openSheet("Confirmar", "Apagar TODOS os pendentes deste aparelho?", `
+            <div class="btnRow">
+              <button class="btn btnWarn" id="yesClear">Apagar</button>
+              <button class="btn" id="noClear">Cancelar</button>
+            </div>
+          `);
+          document.getElementById("yesClear").onclick = () => { setQueue([]); closeSheet(); if (badge) badge.textContent = "Fila limpa"; };
+          document.getElementById("noClear").onclick = closeSheet;
+        };
+      }
+
+
+      function openRegistro(kind, refId) {
+        // kind: "MOVIMENTACOES" | "LOG_EVENTOS"
+        const qlen = getQueue().length;
+
+        const title = kind === "MOVIMENTACOES" ? "Registrar movimentação" : "Registrar evento";
+        const subtitle = `📌 Referência: <b>${escapeHTML(refId || "")}</b> • Pendentes: <b>${qlen}</b>`;
+
+        const body = `
+          <div class="field">
+            <label>Usuário</label>
+            <input id="f_user" placeholder="ex: ryan" />
+            <div class="hint">Se estiver logado, o usuário é preenchido automaticamente.</div>
+          </div>
+
+          ${kind === "MOVIMENTACOES" ? `
+          <div class="field">
+            <label>CTO_ID</label>
+            <input id="f_cto" value="${escapeHTML(refId || "")}" placeholder="CTO_ID" />
+          </div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="f_tipo">
+              <option value="ATIVACAO">ATIVACAO</option>
+              <option value="MANUTENCAO">MANUTENCAO</option>
+              <option value="DESATIVACAO">DESATIVACAO</option>
+              <option value="OUTRO">OUTRO</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Cliente</label>
+            <input id="f_cliente" placeholder="Nome/ID do cliente" />
+          </div>
+          <div class="field">
+            <label>Observação</label>
+            <textarea id="f_obs" placeholder="Detalhes do serviço..."></textarea>
+          </div>
+          ` : `
+          <div class="field">
+            <label>Ação</label>
+            <select id="f_action">
+              <option value="CREATE">CREATE</option>
+              <option value="UPDATE">UPDATE</option>
+              <option value="DELETE">DELETE</option>
+              <option value="NOTE">NOTE</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Entidade</label>
+            <input id="f_entity" value="${escapeHTML(refId || "")}" placeholder="ex: CAIXA:123" />
+          </div>
+          <div class="field">
+            <label>Detalhes</label>
+            <textarea id="f_details" placeholder="O que aconteceu..."></textarea>
+          </div>
+          `}
+
+          <div class="btnRow">
+            <button class="btn btnPrimary" id="btnSave">💾 Salvar no aparelho</button>
+            <button class="btn btnWarn" id="btnExport">⬇️ Exportar pendentes</button>
+          </div>
+
+          <div class="hint">
+            Sem login: por enquanto o registro fica <b>offline</b> no aparelho (fila).<br>
+            No próximo passo a gente liga um endpoint de escrita (Worker → Sheets) e envia tudo automaticamente.
+          </div>
+        `;
+
+        openSheet(title, subtitle, body);
+
+        // Prefill user remembered
+        const savedUser = localStorage.getItem("ftth_user") || "";
+        
+            const authUser = (typeof getAuthUser==="function" ? getAuthUser() : "");
+const elUser = document.getElementById("f_user");
+        if (elUser) elUser.value = savedUser;
+
+        document.getElementById("btnSave").onclick = () => {
+          const user = (document.getElementById("f_user").value || "").trim();
+          if (user) localStorage.setItem("ftth_user", user);
+
+          const now = new Date().toISOString();
+          const item = { kind, ts: now, user, ref: refId || "", gps: lastGPS(), payload: {} };
+
+          if (kind === "MOVIMENTACOES") {
+            item.payload = {
+              DATA: now,
+              CTO_ID: (document.getElementById("f_cto").value || "").trim(),
+              Tipo: document.getElementById("f_tipo").value || "",
+              Cliente: (document.getElementById("f_cliente").value || "").trim(),
+              Usuario: user,
+              Observacao: (document.getElementById("f_obs").value || "").trim(),
+            };
+          } else {
+            item.payload = {
+              TS: now,
+              USER: user,
+              ROLE: "", // pode ser preenchido depois
+              ACTION: document.getElementById("f_action").value || "",
+              ENTITY: (document.getElementById("f_entity").value || "").trim(),
+              ENTITY_ID: (document.getElementById("f_entity").value || "").trim(),
+              DETAILS: (document.getElementById("f_details").value || "").trim(),
+            };
+          }
+
+          const q = getQueue();
+          q.push(item);
+          setQueue(q);
+          if (badge) badge.textContent = `✔ Registro salvo • Pendentes: ${q.length}`;
+
+          if (kind === "MOVIMENTACOES") {
+            const cto = item.payload.CTO_ID || "";
+            const cliente = item.payload.Cliente || "";
+            showPopup(
+              "✅ Cadastrado com sucesso",
+              `Cliente <b>${escapeHTML(cliente || "-")}</b> cadastrado na CTO <b>${escapeHTML(cto || "-")}</b>.`,
+              '<button class="btn btnPrimary" id="btnOk">OK</button>'
+            );
+            const ok = document.getElementById("btnOk");
+            if (ok) ok.onclick = () => { closeSheet(); showSelectedSheet(); };
+          } else {
+            showSelectedSheet(); // volta pro detalhe
+          }
+        };
+
+        document.getElementById("btnExport").onclick = () => {
+          const q = getQueue();
+          const blob = new Blob([JSON.stringify(q, null, 2)], { type: "application/json" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `ftth_pendentes_${new Date().toISOString().replaceAll(":","-")}.json`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+      }
+
+      function lastGPS() {
+        // store last known gps to attach in records
+        try {
+          const s = localStorage.getItem("ftth_last_gps");
+          return s ? JSON.parse(s) : null;
+        } catch { return null; }
+      }
+
+      function setLastGPS(lng, lat, acc) {
+        localStorage.setItem("ftth_last_gps", JSON.stringify({ lng, lat, acc, ts: new Date().toISOString() }));
+      }
+
+      function startGPS() {
+        if (!navigator.geolocation) {
+          if (badge) badge.textContent = "ERRO: geolocalização não suportada";
+          return;
+        }
+        if (watchId != null) return;
+
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const lng = pos.coords.longitude;
+            const lat = pos.coords.latitude;
+            const acc = pos.coords.accuracy;
+
+            setLastGPS(lng, lat, acc);
+
+            if (!userMarker) {
+              userMarker = new maplibregl.Marker({ color: "#1e3a8a" })
+                .setLngLat([lng, lat])
+                .addTo(map);
+            } else {
+              userMarker.setLngLat([lng, lat]);
+            }
+
+            if (followOn) {
+              map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+            }
+          },
+          (err) => {
+            if (badge) badge.textContent = `GPS: ${err.message}`;
+          },
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }
+        );
+      }
+
+      function stopGPS() {
+        if (watchId != null) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+      }
+
+      function initMap() {
+        const apiBase = getApiBase();
+const style = {
+  "version": 8,
+  "sources": {
+    "osm": {
+      "type": "raster",
+      "tiles": [ `${apiBase}/api/tiles/{z}/{x}/{y}.png` ],
+      "tileSize": 256,
+      "attribution": "© OpenStreetMap contributors"
+    }
+  },
+  "layers": [
+    { "id": "osm", "type": "raster", "source": "osm" }
+  ]
+};
+
+map = new maplibregl.Map({
+          container: "map",
+          style: {
+            version: 8,
+            sources: {
+              osm: {
+                type: "raster",
+                tiles: [
+                  "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                  "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                  "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                ],
+                tileSize: 256,
+                attribution: "&copy; OpenStreetMap contributors",
+              },
+            },
+            layers: [{ id: "osm", type: "raster", source: "osm" }],
+          },
+          center: window.PROJECT_CENTER,
+          zoom: window.PROJECT_ZOOM,
+          attributionControl: true,
+        });
+// expõe o mapa globalmente (usado por admin: editar/desenhar/pick)
+window.map = map;
+
+// FTTH_PICK_HANDLER: quando estiver em modo "Selecionar no mapa", captura clique em qualquer lugar do mapa
+map.on("click", (e) => {
+  try{
+    // prioridade: modo captura (CTO/CE)
+    if (__pickMode && e?.lngLat){
+      if (applyPickedLngLat(e.lngLat.lng, e.lngLat.lat)){
+        return;
+      }
+    }
+  }catch(_){}
+});
+
+
+// admin: clicar em itens existentes no mapa abre modal para editar/remover
+try{ enableFeatureEditOnClick(map); }catch(_e){}
+
+if (!map.isStyleLoaded()){
+  map.once("load", ()=>{ try{ enableFeatureEditOnClick(map); }catch(_e){} });
+}
+
+
+        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+        wireToggles();
+
+        btnGPS.addEventListener("click", () => {
+          startGPS();
+          const gps = lastGPS();
+          if (gps) map.easeTo({ center: [gps.lng, gps.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+          else if (badge) badge.textContent = "GPS: permitindo/aguardando...";
+        });
+
+        btnFollow.addEventListener("click", () => {
+          followOn = !followOn;
+          startGPS();
+          btnFollow.style.background = followOn ? "rgba(34,197,94,.95)" : "rgba(17,26,46,.92)";
+          btnFollow.textContent = followOn ? "🧭" : "🧭";
+          if (badge) badge.textContent = followOn ? "GPS: seguindo" : "GPS: livre";
+        });
+
+        btnPend.addEventListener("click", () => openPendentes());
+        btnSync.addEventListener("click", () => syncQueue({ silentIfEmpty: false, showPopups: true }));
+
+        btnReg.addEventListener("click", () => {
+          if (selected?.type === "cto") openRegistro("MOVIMENTACOES", selected.props?.cto_id || "");
+          else if (selected) openRegistro("LOG_EVENTOS", (selected.props?.id ? `${selected.props.tipo}:${selected.props.id}` : (selected.props?.rota_id ? `ROTA:${selected.props.rota_id}` : "")));
+          else showSelectedSheet();
+        });
+
+        map.on("load", async () => {
+          try {
+            // CTOs
+            const ctosResp = await fetchJSON("/api/ctos");
+            const movsResp = await fetchJSON("/api/movimentacoes");
+            const ctos = unwrapArray(ctosResp);
+            const movs = unwrapArray(movsResp);
+
+            const usedByCto = new Map();
+            // Agrupa movimentações por CTO + calcula "online" por cliente (última movimentação)
+            const tmpByCto = new Map(); // cto_id -> normalized[]
+            const lastByCtoCliente = new Map(); // cto_id -> Map(cliente -> lastMov)
+
+            for (const mv0 of movs) {
+              const nm = normalizeMov(mv0);
+              const id = String(nm.cto_id || "").trim();
+              if (!id) continue;
+
+              usedByCto.set(id, (usedByCto.get(id) || 0) + 1);
+
+              if (!tmpByCto.has(id)) tmpByCto.set(id, []);
+              tmpByCto.get(id).push(nm);
+
+              const cliKey = (nm.cliente || "").trim();
+              if (cliKey) {
+                if (!lastByCtoCliente.has(id)) lastByCtoCliente.set(id, new Map());
+                const mCli = lastByCtoCliente.get(id);
+                const prev = mCli.get(cliKey);
+                const useNew = !prev || (!prev.ts && nm.ts) || (prev.ts && nm.ts && String(nm.ts) > String(prev.ts));
+                if (useNew) mCli.set(cliKey, nm);
+              }
+            }
+
+            movByCto = new Map();
+            onlineClientsByCto = new Map();
+
+            for (const [id, arr] of tmpByCto.entries()) {
+              const sorted = arr.slice().sort((a,b) => String(b.ts||"").localeCompare(String(a.ts||"")));
+              movByCto.set(id, sorted);
+
+              const mCli = lastByCtoCliente.get(id) || new Map();
+              const online = [];
+              for (const [cliente, last] of mCli.entries()) {
+                const t = String(last.tipo || "").toUpperCase();
+                if (t === "DESATIVACAO") continue;
+                online.push({ cliente, last_ts: last.ts, last_tipo: last.tipo, usuario: last.usuario, obs: last.obs });
+              }
+              online.sort((a,b) => String(b.last_ts||"").localeCompare(String(a.last_ts||"")));
+              onlineClientsByCto.set(id, online);
+            }
+
+            const ctosGeo = {
+              type: "FeatureCollection",
+              features: ctos.map((cto) => {
+                const cap = Number(cto.capacidade || 0) || 0;
+                const used = usedByCto.get(String(cto.cto_id || "").trim()) || 0;
+                const pct = cap > 0 ? used / cap : 0;
+                return ({
+                  type: "Feature",
+                  geometry: { type: "Point", coordinates: [cto.lng, cto.lat] },
+                  properties: { ...cto, used, cap, pct },
+                });
+              }),
+            };
+            map.addSource("ctos", { type: "geojson", data: ctosGeo });
+
+            // Ícone "X" desenhado em canvas -> ImageData (evita erro de tamanho 0)
+
+            // Glow vermelho (sombra) para CTO cheia (pct >= 1)
+            function ensureCtoGlowIcon() {
+              if (map.hasImage("cto-glow")) return;
+
+              const size = 128;
+              const c = document.createElement("canvas");
+              c.width = size; c.height = size;
+              const ctx = c.getContext("2d");
+              ctx.clearRect(0, 0, size, size);
+
+              const cx = size/2, cy = size/2;
+              const rOuter = 56;
+              const rInner = 10;
+
+              const g = ctx.createRadialGradient(cx, cy, rInner, cx, cy, rOuter);
+              g.addColorStop(0.0, "rgba(239,68,68,0.40)");
+              g.addColorStop(0.55, "rgba(239,68,68,0.18)");
+              g.addColorStop(1.0, "rgba(239,68,68,0.00)");
+
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              ctx.arc(cx, cy, rOuter, 0, Math.PI*2);
+              ctx.closePath();
+              ctx.fill();
+
+              const img = ctx.getImageData(0, 0, size, size);
+              map.addImage("cto-glow", { width: size, height: size, data: img.data });
+            }
+
+            function ensureCtoXIcon() {
+              if (map.hasImage("cto-x")) return;
+
+              const size = 96;
+              const c = document.createElement("canvas");
+              c.width = size; c.height = size;
+              const ctx = c.getContext("2d");
+              ctx.clearRect(0, 0, size, size);
+
+              // X shape (white base; color applied via icon-color using SDF)
+              const pad = 22;
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 20;
+              ctx.lineCap = "round";
+              ctx.lineJoin = "round";
+              ctx.beginPath();
+              ctx.moveTo(pad, pad); ctx.lineTo(size - pad, size - pad);
+              ctx.moveTo(size - pad, pad); ctx.lineTo(pad, size - pad);
+              ctx.stroke();
+
+              const img = ctx.getImageData(0, 0, size, size);
+              map.addImage("cto-x", { width: size, height: size, data: img.data }, { sdf: true });
+            }
+            ensureCtoXIcon();
+            ensureCtoGlowIcon();
+
+            // Layers CTO: outline preto + X colorido + blink quando cheia
+            // Outline (preto) - sempre por baixo
+            map.addLayer({
+              id: "ctos-glow",
+              type: "symbol",
+              source: "ctos",
+              filter: [">=", ["get", "pct"], 1],
+              layout: {
+                "icon-image": "cto-glow",
+                "icon-size": 0.36,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-opacity": 0.8
+              }
+            });
+
+                        map.addLayer({
+              id: "ctos-x-outline",
+              type: "symbol",
+              source: "ctos",
+              layout: {
+                "icon-image": "cto-x",
+                "icon-size": 0.23,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-color": "#000000",
+                "icon-opacity": 1
+              }
+            });
+
+            // X colorido (por ocupação)
+            map.addLayer({
+              id: "ctos-x",
+              type: "symbol",
+              source: "ctos",
+              layout: {
+                "icon-image": "cto-x",
+                "icon-size": 0.17,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-color": [
+                  "case",
+                  [">=", ["get", "pct"], 1], "#ef4444",
+                  [">=", ["get", "pct"], 0.7], "#f59e0b",
+                  "#22c55e"
+                ],
+                "icon-opacity": 1
+              }
+            });
+
+            // Blink outline (preto) só CTO cheia
+            map.addLayer({
+              id: "ctos-x-blink-outline",
+              type: "symbol",
+              source: "ctos",
+              filter: [">=", ["get", "pct"], 1],
+              layout: {
+                "icon-image": "cto-x",
+                "icon-size": 0.17,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: { "icon-color": "#000000", "icon-opacity": 0.85 }
+            });
+
+            // Blink colorido (vermelho) só CTO cheia
+            map.addLayer({
+              id: "ctos-x-blink",
+              type: "symbol",
+              source: "ctos",
+              filter: [">=", ["get", "pct"], 1],
+              layout: {
+                "icon-image": "cto-x",
+                "icon-size": 0.17,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: { "icon-color": "#ef4444", "icon-opacity": 1 }
+            });
+
+            // animação piscar (opacidade) - só se visível
+            let blinkOn = true;
+            setInterval(() => {
+              try {
+                const vis = map.getLayoutProperty("ctos-x-blink", "visibility");
+                if (vis === "none") return;
+                blinkOn = !blinkOn;
+                map.setPaintProperty("ctos-x-blink", "icon-opacity", 1);
+                map.setPaintProperty("ctos-x-blink-outline", "icon-opacity", 1);
+              
+                map.setPaintProperty("ctos-glow", "icon-opacity", blinkOn ? 0.95 : 0.10);} catch (_) {}
+            }, 900);
+
+            // Visibilidade inicial conforme toggle            setLayerVisible("ctos-glow", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-glow", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-outline", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink-outline", elToggleCTOs?.checked ?? true);
+            setLayerVisible("ctos-x-blink", elToggleCTOs?.checked ?? true);
+
+
+// Caixas (CE/CDO) - ícones via Canvas (sem fontes)
+            const caixasResp = await fetchJSON("/api/caixas_emenda_cdo");
+            const caixas = unwrapArray(caixasResp);
+            const caixasGeo = {
+              type: "FeatureCollection",
+              features: caixas.map((cx) => ({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [cx.lng, cx.lat] },
+                properties: cx,
+              })),
+            };
+            map.addSource("caixas", { type: "geojson", data: caixasGeo });
+
+            function ensureCaixaIcons() {
+              // Ícones vazados (hollow) em SDF para permitir icon-color (laranja/roxo) e contorno preto.
+              // CE: quadrado vazado
+              if (!map.hasImage("ce-square")) {
+                const size = 96;
+                const c = document.createElement("canvas");
+                c.width = size; c.height = size;
+                const ctx = c.getContext("2d");
+                ctx.clearRect(0,0,size,size);
+
+                // desenha um bloco branco e recorta o miolo para ficar vazado
+                const pad = 18;
+                const w = size - pad*2;
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(pad, pad, w, w);
+
+                
+
+                const img = ctx.getImageData(0,0,size,size);
+                map.addImage("ce-square", { width:size, height:size, data: img.data }, { sdf:true });
+              }
+
+
+              // CDO: triângulo vazado
+              if (!map.hasImage("cdo-tri")) {
+                const size = 96;
+                const c = document.createElement("canvas");
+                c.width = size; c.height = size;
+                const ctx = c.getContext("2d");
+                ctx.clearRect(0,0,size,size);
+
+                ctx.fillStyle = "#ffffff";
+                ctx.beginPath();
+                ctx.moveTo(size/2, 14);
+                ctx.lineTo(size-14, size-14);
+                ctx.lineTo(14, size-14);
+                ctx.closePath();
+                ctx.fill();
+
+                // recorta o miolo para ficar vazado (hollow)
+                
+
+                const img = ctx.getImageData(0,0,size,size);
+                map.addImage("cdo-tri", { width:size, height:size, data: img.data }, { sdf:true });
+              }
+            }
+            ensureCaixaIcons();
+
+            map.addLayer({
+              id: "caixas-outline",
+              type: "symbol",
+              source: "caixas",
+              layout: {
+                "icon-image": [
+                  "case",
+                  ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
+                  "cdo-tri"
+                ],
+                "icon-size": 0.22,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-color": "#000000",
+                "icon-opacity": 0.85
+              }
+            });
+
+            map.addLayer({
+              id: "caixas-layer",
+              type: "symbol",
+              source: "caixas",
+              layout: {
+                "icon-image": [
+                  "case",
+                  ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "ce-square",
+                  "cdo-tri"
+                ],
+                "icon-size": 0.20,
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true
+              },
+              paint: {
+                "icon-color": [
+                  "case",
+                  ["==", ["upcase", ["to-string", ["get","tipo"]]], "CE"], "#f97316",  // CE laranja
+                  "#a855f7" // CDO roxo
+                ],
+                "icon-opacity": 0.95
+              }
+            });
+
+            setLayerVisible("caixas-outline", elToggleCaixas?.checked ?? true);
+            setLayerVisible("caixas-layer", elToggleCaixas?.checked ?? true);
+
+
+            // Rotas (GeoJSON FeatureCollection)
+            const rotas = await fetchJSON("/api/rotas_fibras");
+            map.addSource("rotas", { type: "geojson", data: rotas });
+            map.addLayer({
+              id: "rotas-layer",
+              type: "line",
+              source: "rotas",
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": [
+                  "case",
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], "#1e40af", // backbone azul (escuro)
+                  ["in","RAMAL",["to-string",["get","tipos"]]], "#000000",    // ramal preto
+                  ["in","DROP",["to-string",["get","tipos"]]], "#22c55e",     // drop verde
+                  "#f59e0b" // rota padrão laranja
+                ],
+                "line-width": [
+                  "case",
+                  ["in","BACKBONE",["to-string",["get","tipos"]]], 6,
+                  ["in","RAMAL",["to-string",["get","tipos"]]], 3.5,
+                  ["in","DROP",["to-string",["get","tipos"]]], 2,
+                  3
+                ],
+                "line-opacity": 0.92
+              },
+            });
+            try { map.moveLayer("rotas-layer", "ctos-glow"); } catch(e) { try { map.moveLayer("rotas-layer", "ctos-x-outline"); } catch(_){} }
+            setLayerVisible("rotas-layer", elToggleRotas?.checked ?? true);
+
+            // Interações: toque seleciona e abre sheet (mobile-first)
+            map.on("click", "ctos-x", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "cto", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+            map.on("click", "caixas-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "caixa", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+            map.on("click", "rotas-layer", (e) => {
+              const props = e.features?.[0]?.properties || {};
+              selected = { type: "rota", props, lngLat: e.lngLat };
+              showSelectedSheet();
+            });
+
+            // Cursor desktop (não atrapalha mobile)
+            map.on("mouseenter", "ctos-x", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "ctos-x", () => (map.getCanvas().style.cursor = ""));
+            map.on("mouseenter", "caixas-layer", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "caixas-layer", () => (map.getCanvas().style.cursor = ""));
+            map.on("mouseenter", "rotas-layer", () => (map.getCanvas().style.cursor = "pointer"));
+            map.on("mouseleave", "rotas-layer", () => (map.getCanvas().style.cursor = ""));
+
+            if (badge) badge.textContent = `BUILD: ${window.__BUILD_ID__} • OK${IS_FILE_ORIGIN ? " • (file:// sem sync)" : ""}`;
+          } catch (err) {
+            console.error(err);
+            if (badge) badge.textContent = `ERRO: ${String(err?.message ?? err)}`;
+          }
+        });
+
+        return map;
+      }
+
+      window.addEventListener("offline", onBecameOffline);
+      window.addEventListener("online", onBecameOnline);
+      if (!navigator.onLine) onBecameOffline();
+      setInterval(() => {
+        if (IS_FILE_ORIGIN) return;
+        if (navigator.onLine) syncQueue({ silentIfEmpty: true, showPopups: false });
+      }, 45000);
+
+      document.getElementById("login-btn")?.addEventListener("click", doLogin);
+      document.getElementById("login-pass")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+      document.getElementById("login-user")?.addEventListener("keydown", (e)=>{ if (e.key==="Enter") doLogin(); });
+
+      // Start only if authenticated
+      if (!checkAuthOrShowLogin()) return;
+// best-effort: atualiza role via /api/me e atualiza pill
+fetchMeRole().then(()=>{
+  const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
+  const el = document.getElementById('userName');
+  if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
+});
+window.__APP_STARTED__ = true;
+initMap();
+});
+  </script>
+<!-- ===== Admin CRUD Modal ===== -->
+<div class="pick-banner" id="pickBanner">📍 Clique no mapa para capturar a posição…</div>
+
+<div class="modal-backdrop" id="adminModalBackdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
+    <div class="modal-header">
+      <div class="modal-title" id="adminModalTitle">Admin • Alterações</div>
+      <button class="modal-close" id="adminModalClose">Fechar</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <div class="tab active" data-tab="cto">CTOs</div>
+        <div class="tab" data-tab="ce">CE/CDO</div>
+        <div class="tab" data-tab="rota">Rotas</div>
+      </div>
+
+      <!-- CTO -->
+      <div class="panel" data-panel="cto">
+        <div class="form-grid">
+          <div class="field"><label>CTO ID</label><input id="cto_id" placeholder="CTO001" /></div>
+          <div class="field"><label>Nome</label><input id="cto_nome" placeholder="CTO 001" /></div>
+                      <div class="field"><label>Rua</label><input id="cto_rua" placeholder="Rua ..." /></div>
+            <div class="field"><label>Bairro</label><input id="cto_bairro" placeholder="Bairro ..." /></div>
+<div class="field"><label>Latitude</label><input id="cto_lat" placeholder="-22.412" /></div>
+          <div class="field"><label>Longitude</label><input id="cto_lng" placeholder="-43.166" /></div>
+          <div class="field full">
+            <div class="hint">Dica: use “Selecionar no mapa” para preencher Lat/Lng e endereço automaticamente.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="btnPickCTO">Selecionar no mapa</button>
+          <button class="btn-danger" id="btnModalDelCTO">Remover</button>
+          <button class="btn-primary" id="btnModalAddCTO">Salvar</button>
+        </div>
+      </div>
+
+      <!-- CE/CDO -->
+      <div class="panel" data-panel="ce" style="display:none">
+        <div class="form-grid">
+          <div class="field"><label>ID</label><input id="ce_id" placeholder="CE001" /></div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="ce_tipo">
+              <option value="CE">CE</option>
+              <option value="CDO">CDO</option>
+            </select>
+          </div>
+          <div class="field"><label>Nome</label><input id="ce_nome" placeholder="CE 001" /></div>
+                      <div class="field"><label>Rua</label><input id="ce_rua" placeholder="Rua ..." /></div>
+            <div class="field"><label>Bairro</label><input id="ce_bairro" placeholder="Bairro ..." /></div>
+<div class="field"><label>Observação</label><input id="ce_obs" placeholder="" /></div>
+          <div class="field"><label>Latitude</label><input id="ce_lat" placeholder="-22.412" /></div>
+          <div class="field"><label>Longitude</label><input id="ce_lng" placeholder="-43.166" /></div>
+          <div class="field full">
+            <div class="hint">Dica: clique no mapa para preencher Lat/Lng.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="btnPickCE">Selecionar no mapa</button>
+          <button class="btn-danger" id="btnModalDelCE">Remover</button>
+          <button class="btn-primary" id="btnModalAddCE">Salvar</button>
+        </div>
+      </div>
+
+      <!-- Rota -->
+      <div class="panel" data-panel="rota" style="display:none">
+        <div class="form-grid">
+          <div class="field"><label>Rota ID</label><input id="rota_id" placeholder="R001" /></div>
+          <div class="field"><label>Nome</label><input id="rota_nome" placeholder="Rota 001" /></div>
+          <div class="field full">
+            <label>GeoJSON</label>
+            <textarea id="rota_geojson" placeholder='{"type":"Feature","geometry":{...},"properties":{...}}'></textarea>
+            <div class="hint">Para rotas, cole um GeoJSON de LineString/MultiLineString.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="btnDrawRota">Desenhar no mapa</button>
+            <button class="btn-ghost" id="btnRotaUndo" style="display:none">Desfazer</button>
+            <button class="btn-ghost" id="btnRotaCancel" style="display:none">Cancelar</button>
+            <button class="btn-primary" id="btnRotaFinish" style="display:none">Concluir</button>
+            <button class="btn-danger" id="btnModalDelRota">Remover</button>
+          <button class="btn-primary" id="btnModalAddRota">Salvar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
