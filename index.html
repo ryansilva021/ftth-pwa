@@ -699,6 +699,13 @@ function startPick(kind, opts){
   closeAdminModal();
   showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
 }
+;
+  __pickMode = { kind, autoSave: !!options.autoSave };
+  setPickBanner(true);
+  // fecha o modal para liberar o clique no mapa
+  closeAdminModal();
+  showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
+}
 
 async function applyPickedLngLatAsync(lng, lat){
   if (!__pickMode) return false;
@@ -725,11 +732,52 @@ async function applyPickedLngLatAsync(lng, lat){
     }
   }
 
-  // encerra pick mode e reabre modal na aba correta
+    // se autoSave estiver ligado, tenta salvar imediatamente
+  const auto = !!(__pickMode && __pickMode.autoSave);
+
+  // encerra pick mode
   __pickMode = null;
   setPickBanner(false);
 
-  // reabre o modal na aba usada
+  if (auto){
+    if (k === "cto"){
+      // Se ID estiver vazio, gera um ID simples para inclusão rápida
+      if (qs("cto_id") && !String(qs("cto_id").value||"").trim()){
+        const id = "CTO" + String(Date.now()).slice(-6);
+        qs("cto_id").value = id;
+        if (qs("cto_nome") && !String(qs("cto_nome").value||"").trim()) qs("cto_nome").value = id;
+      }
+      const payload = buildCTOPayload();
+      if (!payload){ openAdminModal("cto"); return true; }
+      const r = await adminCrud("/api/ctos", "POST", payload);
+      if (r){
+        showPopup("OK", "CTO adicionada.");
+        refreshAllData();
+        return true;
+      }
+      // se falhar, reabre modal para revisar
+      openAdminModal("cto");
+      return true;
+    } else if (k === "ce"){
+      if (qs("ce_id") && !String(qs("ce_id").value||"").trim()){
+        const id = "CE" + String(Date.now()).slice(-6);
+        qs("ce_id").value = id;
+        if (qs("ce_nome") && !String(qs("ce_nome").value||"").trim()) qs("ce_nome").value = id;
+      }
+      const payload = buildCEPayload();
+      if (!payload){ openAdminModal("ce"); return true; }
+      const r = await adminCrud("/api/caixas_emenda_cdo", "POST", payload);
+      if (r){
+        showPopup("OK", "CE/CDO adicionada.");
+        refreshAllData();
+        return true;
+      }
+      openAdminModal("ce");
+      return true;
+    }
+  }
+
+  // reabre o modal na aba usada (modo manual)
   if (__reopenAdminAfterPick){
     if (k === "cto") openAdminModal("cto");
     else if (k === "ce") openAdminModal("ce");
@@ -739,10 +787,12 @@ async function applyPickedLngLatAsync(lng, lat){
 }
 
 function applyPickedLngLat(lng, lat){
-  // wrapper sync p/ uso no handler do map
+  // retorna false se não estiver em modo captura
+  if (!__pickMode) return false;
   applyPickedLngLatAsync(lng, lat);
   return true;
 }
+
 
 
 function numOrStr(v){
@@ -1085,8 +1135,8 @@ function bindAdminModal(){
   qs("btnModalAddRota")?.addEventListener("click", modalSaveRota);
   qs("btnModalDelRota")?.addEventListener("click", modalDelRota);
 
-  qs("btnPickCTO")?.addEventListener("click", ()=>startPick("cto"));
-  qs("btnPickCE")?.addEventListener("click", ()=>startPick("ce"));
+  qs("btnPickCTO")?.addEventListener("click", ()=>startPick("cto", { autoSave: true }));
+  qs("btnPickCE")?.addEventListener("click", ()=>startPick("ce", { autoSave: true }));;
 }
 
 
