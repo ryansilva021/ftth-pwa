@@ -184,6 +184,128 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
       font-size:12px;
     }
     .logoutBtn:hover{ filter:brightness(1.08); }
+/* ===== Admin Modal ===== */
+.modal-backdrop{
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(6px);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index: 9999;
+  padding: 16px;
+}
+.modal{
+  width: min(760px, 100%);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 20px 70px rgba(0,0,0,.45);
+  overflow:hidden;
+}
+.modal-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.modal-title{ font-weight: 800; letter-spacing: .2px; }
+.modal-close{
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.modal-body{ padding: 16px; }
+.tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 12px; }
+.tab{
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  cursor:pointer;
+  user-select:none;
+  font-weight: 700;
+  font-size: 12px;
+}
+.tab.active{ background: rgba(34,197,94,.18); border-color: rgba(34,197,94,.35); }
+.form-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.form-grid .full{ grid-column: 1 / -1; }
+.field label{ display:block; font-size: 12px; opacity:.85; margin: 2px 2px 6px; }
+.field input, .field select, .field textarea{
+  width:100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  outline: none;
+}
+.field textarea{ min-height: 120px; resize: vertical; }
+.actions{
+  display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;
+  margin-top: 12px;
+}
+.btn-primary{
+  background: linear-gradient(180deg, rgba(34,197,94,.95), rgba(22,163,74,.95));
+  border: none;
+  color: #07210f;
+  font-weight: 900;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor:pointer;
+}
+.btn-danger{
+  background: rgba(239,68,68,.20);
+  border: 1px solid rgba(239,68,68,.35);
+  color: #fff;
+  font-weight: 900;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor:pointer;
+}
+.btn-ghost{
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  font-weight: 800;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor:pointer;
+}
+.hint{
+  font-size: 12px;
+  opacity: .8;
+  margin-top: 6px;
+}
+.pick-banner{
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  background: rgba(2,6,23,.86);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 999px;
+  display:none;
+  z-index: 10000;
+}
+
+/* ===== Draw Route ===== */
+.draw-point{
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  background: rgba(34,197,94,.95);
+  border: 2px solid rgba(255,255,255,.9);
+  box-shadow: 0 8px 20px rgba(0,0,0,.35);
+}
+
 </style>
 </head>
 <body>
@@ -218,13 +340,15 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     <div class="right">
       <div class="userpill" id="userPill">👤 <span id="userName">—</span></div>
       <div id="adminMenu" class="adminMenu" data-requires-admin style="display:none; align-items:center; gap:8px; margin-right:10px;">
+        <button class="btn small" id="btnOpenAdmin">Gerenciar</button>
+
   <span class="pill">Admin</span>
-  <button class="btn small" id="btnAddCTO">+ CTO</button>
-  <button class="btn small" id="btnDelCTO">- CTO</button>
-  <button class="btn small" id="btnAddRota">+ Rota</button>
-  <button class="btn small" id="btnDelRota">- Rota</button>
-  <button class="btn small" id="btnAddCE">+ CE/CDO</button>
-  <button class="btn small" id="btnDelCE">- CE/CDO</button>
+  
+  
+  
+  
+  
+  
 </div>
 
 <button class="logoutBtn" id="btnLogout" title="Sair">Sair</button>
@@ -509,6 +633,409 @@ function refreshAllData(){
   location.reload();
 }
 
+// ===== Admin Modal UI + Add by Map Click =====
+let __pickMode = null; // { kind: 'cto'|'ce' }
+
+function qs(id){ return document.getElementById(id); }
+
+function openAdminModal(tab){
+  if (!assertAdmin()) return;
+  const b = qs("adminModalBackdrop");
+  if (!b) return;
+  b.style.display = "flex";
+  b.setAttribute("aria-hidden","false");
+  switchAdminTab(tab || "cto");
+}
+function closeAdminModal(){
+  const b = qs("adminModalBackdrop");
+  if (!b) return;
+  b.style.display = "none";
+  b.setAttribute("aria-hidden","true");
+}
+function switchAdminTab(tab){
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.classList.toggle("active", t.dataset.tab === tab);
+  });
+  document.querySelectorAll(".panel").forEach(p=>{
+    p.style.display = (p.dataset.panel === tab) ? "" : "none";
+  });
+}
+
+function setPickBanner(on){
+  const el = qs("pickBanner");
+  if (!el) return;
+  el.style.display = on ? "block" : "none";
+}
+
+function startPick(kind){
+  if (!assertAdmin()) return;
+  __pickMode = { kind };
+  setPickBanner(true);
+  showPopup("Seleção no mapa", "Clique no mapa para capturar Lat/Lng.");
+}
+
+function applyPickedLngLat(lng, lat){
+  if (!__pickMode) return false;
+  const k = __pickMode.kind;
+  if (k === "cto"){
+    if (qs("cto_lat")) qs("cto_lat").value = String(lat);
+    if (qs("cto_lng")) qs("cto_lng").value = String(lng);
+    openAdminModal("cto");
+  } else if (k === "ce"){
+    if (qs("ce_lat")) qs("ce_lat").value = String(lat);
+    if (qs("ce_lng")) qs("ce_lng").value = String(lng);
+    openAdminModal("ce");
+  }
+  __pickMode = null;
+  setPickBanner(false);
+  return true;
+}
+
+function numOrStr(v){
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  const n = Number(s.replace(",", "."));
+  return Number.isFinite(n) ? n : s;
+}
+
+function buildCTOPayload(){
+  const cto_id = String(qs("cto_id")?.value || "").trim();
+  if (!cto_id){ showPopup("Campo obrigatório", "Informe o CTO ID."); return null; }
+  return {
+    cto_id,
+    nome: String(qs("cto_nome")?.value || "").trim(),
+    lat: numOrStr(qs("cto_lat")?.value),
+    lng: numOrStr(qs("cto_lng")?.value),
+  };
+}
+function buildCEPayload(){
+  const id = String(qs("ce_id")?.value || "").trim();
+  if (!id){ showPopup("Campo obrigatório", "Informe o ID da CE/CDO."); return null; }
+  return {
+    id,
+    tipo: String(qs("ce_tipo")?.value || "CE"),
+    nome: String(qs("ce_nome")?.value || "").trim(),
+    obs: String(qs("ce_obs")?.value || "").trim(),
+    lat: numOrStr(qs("ce_lat")?.value),
+    lng: numOrStr(qs("ce_lng")?.value),
+  };
+}
+function buildRotaPayload(){
+  const rota_id = String(qs("rota_id")?.value || "").trim();
+  if (!rota_id){ showPopup("Campo obrigatório", "Informe o Rota ID."); return null; }
+  const geojsonRaw = String(qs("rota_geojson")?.value || "").trim();
+  if (!geojsonRaw){ showPopup("Campo obrigatório", "Cole o GeoJSON da rota."); return null; }
+  // tenta validar JSON
+  let geojson = geojsonRaw;
+  try{ geojson = JSON.parse(geojsonRaw); }catch(_){}
+  return {
+    rota_id,
+    nome: String(qs("rota_nome")?.value || "").trim(),
+    geojson
+  };
+}
+
+async function modalSaveCTO(){
+  const payload = buildCTOPayload();
+  if (!payload) return;
+  const r = await adminCrud("/api/ctos", "POST", payload);
+  if (r){ showPopup("OK", "CTO salvo."); closeAdminModal(); refreshAllData(); }
+}
+async function modalDelCTO(){
+  const cto_id = String(qs("cto_id")?.value || "").trim();
+  if (!cto_id){ showPopup("Campo obrigatório", "Informe o CTO ID."); return; }
+  const r = await adminCrud("/api/ctos", "DELETE", { cto_id });
+  if (r){ showPopup("OK", "CTO removido."); closeAdminModal(); refreshAllData(); }
+}
+async function modalSaveCE(){
+  const payload = buildCEPayload();
+  if (!payload) return;
+  const r = await adminCrud("/api/caixas_emenda_cdo", "POST", payload);
+  if (r){ showPopup("OK", "CE/CDO salvo."); closeAdminModal(); refreshAllData(); }
+}
+async function modalDelCE(){
+  const id = String(qs("ce_id")?.value || "").trim();
+  if (!id){ showPopup("Campo obrigatório", "Informe o ID."); return; }
+  const r = await adminCrud("/api/caixas_emenda_cdo", "DELETE", { id });
+  if (r){ showPopup("OK", "CE/CDO removido."); closeAdminModal(); refreshAllData(); }
+}
+async function modalSaveRota(){
+  const payload = buildRotaPayload();
+  if (!payload) return;
+  const r = await adminCrud("/api/rotas_fibras", "POST", payload);
+  if (r){ showPopup("OK", "Rota salva."); closeAdminModal(); refreshAllData(); }
+}
+async function modalDelRota(){
+  const rota_id = String(qs("rota_id")?.value || "").trim();
+  if (!rota_id){ showPopup("Campo obrigatório", "Informe o Rota ID."); return; }
+  const r = await adminCrud("/api/rotas_fibras", "DELETE", { rota_id });
+  if (r){ showPopup("OK", "Rota removida."); closeAdminModal(); refreshAllData(); }
+}
+
+// ===== Editar ao clicar em um item no mapa (admin) =====
+function normalizeId(props, keys){
+  for (const k of keys){
+    if (props && props[k] != null && String(props[k]).trim() !== "") return String(props[k]).trim();
+  }
+  return "";
+}
+
+function fillCTOFromProps(props, lngLat){
+  qs("cto_id").value = normalizeId(props, ["cto_id","CTO_ID","id","ID","cto","CTO"]);
+  qs("cto_nome").value = String(props.nome || props.NOME || props.name || props.NAME || "").trim();
+  if (lngLat){
+    qs("cto_lat").value = String(lngLat.lat);
+    qs("cto_lng").value = String(lngLat.lng);
+  } else {
+    const lat = props.lat ?? props.LAT ?? props.latitude ?? props.LATITUDE;
+    const lng = props.lng ?? props.LNG ?? props.lon ?? props.LON ?? props.longitude ?? props.LONGITUDE;
+    if (lat!=null) qs("cto_lat").value = String(lat);
+    if (lng!=null) qs("cto_lng").value = String(lng);
+  }
+  openAdminModal("cto");
+}
+
+function fillCEFromProps(props, lngLat){
+  qs("ce_id").value = normalizeId(props, ["id","ID","ce_id","CE_ID","cdo_id","CDO_ID"]);
+  qs("ce_tipo").value = String(props.tipo || props.TIPO || "CE").toUpperCase() === "CDO" ? "CDO" : "CE";
+  qs("ce_nome").value = String(props.nome || props.NOME || props.name || "").trim();
+  qs("ce_obs").value = String(props.obs || props.OBS || props.observacao || props.Observacao || "").trim();
+  if (lngLat){
+    qs("ce_lat").value = String(lngLat.lat);
+    qs("ce_lng").value = String(lngLat.lng);
+  } else {
+    const lat = props.lat ?? props.LAT ?? props.latitude ?? props.LATITUDE;
+    const lng = props.lng ?? props.LNG ?? props.lon ?? props.LON ?? props.longitude ?? props.LONGITUDE;
+    if (lat!=null) qs("ce_lat").value = String(lat);
+    if (lng!=null) qs("ce_lng").value = String(lng);
+  }
+  openAdminModal("ce");
+}
+
+function fillRotaFromProps(props){
+  qs("rota_id").value = normalizeId(props, ["rota_id","ROTA_ID","id","ID"]);
+  qs("rota_nome").value = String(props.nome || props.NOME || props.name || "").trim();
+  // Se existir geojson na feature, tenta preencher
+  const gj = props.geojson || props.GEOJSON || props.geometry || props.GEOMETRY;
+  if (gj){
+    try{ qs("rota_geojson").value = JSON.stringify(typeof gj === "string" ? JSON.parse(gj) : gj, null, 2); }
+    catch(_){ qs("rota_geojson").value = String(gj); }
+  }
+  openAdminModal("rota");
+}
+
+function enableFeatureEditOnClick(map){
+  // Evita múltiplos binds
+  if (map.__ftthEditOnClickBound) return;
+  map.__ftthEditOnClickBound = true;
+
+  map.on("click", (e)=>{
+    try{
+      // se estiver em pickMode (lat/lng), deixa o handler existente consumir primeiro
+      if (__pickMode) return;
+      // se estiver desenhando rota, não abrir modal de edição
+      if (__drawRota && __drawRota.active) return;
+      if (getAuthRole() !== "admin") return;
+
+      // pega feature mais "provável" sob o clique
+      const features = map.queryRenderedFeatures(e.point) || [];
+      if (!features.length) return;
+
+      // tenta classificar por propriedades conhecidas
+      let best = null;
+      for (const f of features){
+        const p = f.properties || {};
+        if (!best) best = f;
+        // prioridade: CTO
+        if (p.cto_id || p.CTO_ID || p.cto || p.CTO) { best = f; break; }
+      }
+
+      const p = (best && best.properties) ? best.properties : {};
+      // Heurística de entidade
+      const hasCTO = !!(p.cto_id || p.CTO_ID || p.cto || p.CTO);
+      const hasCE  = !!(p.tipo || p.TIPO || p.ce_id || p.CE_ID || p.cdo_id || p.CDO_ID || p.ce || p.CE);
+      const hasRota = !!(p.rota_id || p.ROTA_ID || (best && (best.geometry?.type || "")).includes("Line"));
+
+      if (hasCTO){
+        fillCTOFromProps(p, e.lngLat);
+      } else if (hasRota){
+        fillRotaFromProps(p);
+      } else if (hasCE){
+        fillCEFromProps(p, e.lngLat);
+      } else {
+        // fallback: se for ponto, assume CE/CTO dependendo de 'layer/source' name
+        const layerId = best.layer && best.layer.id ? String(best.layer.id) : "";
+        if (/cto/i.test(layerId)) fillCTOFromProps(p, e.lngLat);
+        else if (/rota/i.test(layerId)) fillRotaFromProps(p);
+        else if (/caixa|cdo|ce/i.test(layerId)) fillCEFromProps(p, e.lngLat);
+      }
+    } catch(_){}
+  });
+}
+
+// ===== Desenhar rota no mapa (admin) =====
+let __drawRota = { active:false, points:[], markers:[], sourceId:"__draw_rota_src", layerId:"__draw_rota_layer" };
+
+function setRotaDrawButtons(active){
+  const undo = qs("btnRotaUndo"), cancel = qs("btnRotaCancel"), finish = qs("btnRotaFinish"), draw = qs("btnDrawRota");
+  if (undo) undo.style.display = active ? "" : "none";
+  if (cancel) cancel.style.display = active ? "" : "none";
+  if (finish) finish.style.display = active ? "" : "none";
+  if (draw) draw.style.display = active ? "none" : "";
+}
+
+function ensureDrawLayer(map){
+  const srcId = __drawRota.sourceId, layerId = __drawRota.layerId;
+  if (!map.getSource(srcId)){
+    map.addSource(srcId, {
+      type:"geojson",
+      data: { type:"FeatureCollection", features: [] }
+    });
+  }
+  if (!map.getLayer(layerId)){
+    map.addLayer({
+      id: layerId,
+      type: "line",
+      source: srcId,
+      paint: {
+        "line-width": 4,
+        "line-opacity": 0.9
+      }
+    });
+  }
+}
+
+function updateDrawLine(map){
+  const src = map.getSource(__drawRota.sourceId);
+  if (!src) return;
+  const coords = __drawRota.points.map(p=>[p.lng,p.lat]);
+  const feature = (coords.length >= 2) ? {
+    type:"Feature",
+    properties:{},
+    geometry:{ type:"LineString", coordinates: coords }
+  } : null;
+  src.setData({
+    type:"FeatureCollection",
+    features: feature ? [feature] : []
+  });
+}
+
+function clearDrawMarkers(){
+  try{
+    for (const m of __drawRota.markers){ m.remove(); }
+  }catch(_){}
+  __drawRota.markers = [];
+}
+
+function startDrawRota(){
+  if (!assertAdmin()) return;
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  if (!map){ showPopup("Erro", "Mapa não inicializado."); return; }
+
+  __drawRota.active = true;
+  __drawRota.points = [];
+  clearDrawMarkers();
+  setRotaDrawButtons(true);
+  setPickBanner(true);
+  qs("pickBanner").textContent = "🧵 Clique no mapa para adicionar pontos da rota. Concluir quando terminar.";
+  openAdminModal("rota");
+
+  // garante camada
+  if (!map.isStyleLoaded()){
+    map.once("load", ()=>{ ensureDrawLayer(map); updateDrawLine(map); });
+  } else {
+    ensureDrawLayer(map); updateDrawLine(map);
+  }
+
+  // bind click handler uma única vez
+  if (!map.__ftthDrawRotaBound){
+    map.__ftthDrawRotaBound = true;
+    map.on("click", (e)=>{
+      if (!__drawRota.active) return;
+      __drawRota.points.push({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+      // marker
+      try{
+        const el = document.createElement("div");
+        el.className = "draw-point";
+        const mk = new maplibregl.Marker({ element: el }).setLngLat(e.lngLat).addTo(map);
+        __drawRota.markers.push(mk);
+      }catch(_){}
+      updateDrawLine(map);
+    });
+  }
+}
+
+function undoDrawRota(){
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  if (!map) return;
+  if (!__drawRota.active) return;
+  __drawRota.points.pop();
+  try{
+    const mk = __drawRota.markers.pop();
+    if (mk) mk.remove();
+  }catch(_){}
+  updateDrawLine(map);
+}
+
+function cancelDrawRota(){
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  __drawRota.active = false;
+  __drawRota.points = [];
+  clearDrawMarkers();
+  setRotaDrawButtons(false);
+  setPickBanner(false);
+  if (qs("pickBanner")) qs("pickBanner").textContent = "📍 Clique no mapa para capturar a posição…";
+  if (map && map.getSource(__drawRota.sourceId)){
+    try{ map.getSource(__drawRota.sourceId).setData({ type:"FeatureCollection", features:[] }); }catch(_){}
+  }
+}
+
+function finishDrawRota(){
+  const map = window.map || (typeof map !== "undefined" ? map : null);
+  if (!map) return;
+  if (!__drawRota.active) return;
+  if (__drawRota.points.length < 2){
+    showPopup("Rota incompleta", "Adicione pelo menos 2 pontos.");
+    return;
+  }
+  const coords = __drawRota.points.map(p=>[p.lng,p.lat]);
+  const gj = { type:"Feature", properties:{}, geometry:{ type:"LineString", coordinates: coords } };
+  qs("rota_geojson").value = JSON.stringify(gj, null, 2);
+  __drawRota.active = false;
+  setRotaDrawButtons(false);
+  setPickBanner(false);
+  if (qs("pickBanner")) qs("pickBanner").textContent = "📍 Clique no mapa para capturar a posição…";
+  showPopup("OK", "GeoJSON preenchido no formulário. Agora clique em Salvar.");
+}
+
+function bindAdminModal(){
+  const openBtn = qs("btnOpenAdmin");
+  if (openBtn) openBtn.addEventListener("click", ()=>openAdminModal("cto"));
+
+  const closeBtn = qs("adminModalClose");
+  if (closeBtn) closeBtn.addEventListener("click", closeAdminModal);
+
+  const backdrop = qs("adminModalBackdrop");
+  if (backdrop) backdrop.addEventListener("click", (e)=>{
+    if (e.target === backdrop) closeAdminModal();
+  });
+
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.addEventListener("click", ()=>switchAdminTab(t.dataset.tab));
+  });
+
+  qs("btnModalAddCTO")?.addEventListener("click", modalSaveCTO);
+  qs("btnModalDelCTO")?.addEventListener("click", modalDelCTO);
+  qs("btnModalAddCE")?.addEventListener("click", modalSaveCE);
+  qs("btnModalDelCE")?.addEventListener("click", modalDelCE);
+  qs("btnModalAddRota")?.addEventListener("click", modalSaveRota);
+  qs("btnModalDelRota")?.addEventListener("click", modalDelRota);
+
+  qs("btnPickCTO")?.addEventListener("click", ()=>startPick("cto"));
+  qs("btnPickCE")?.addEventListener("click", ()=>startPick("ce"));
+}
+
+
 async function authFetch(url, opts={}){
         const headers = authHeaders(opts.headers || {});
         const res = await fetch(url, { ...opts, headers });
@@ -613,25 +1140,10 @@ initMap();
 }
 
       // __bindLogout__
+      bindAdminModal();
 (function(){
   const btn = document.getElementById("btnLogout");
   if (btn) btn.addEventListener("click", () => { doLogout(); });
-})();
-
-// __bindAdminCrud__
-(function(){
-  const b1 = document.getElementById("btnAddCTO");
-  const b2 = document.getElementById("btnDelCTO");
-  const b3 = document.getElementById("btnAddRota");
-  const b4 = document.getElementById("btnDelRota");
-  const b5 = document.getElementById("btnAddCE");
-  const b6 = document.getElementById("btnDelCE");
-  if (b1) b1.addEventListener("click", adminAddCTO);
-  if (b2) b2.addEventListener("click", adminDelCTO);
-  if (b3) b3.addEventListener("click", adminAddRota);
-  if (b4) b4.addEventListener("click", adminDelRota);
-  if (b5) b5.addEventListener("click", adminAddCECDO);
-  if (b6) b6.addEventListener("click", adminDelCECDO);
 })();
 
 function checkAuthOrShowLogin(){
@@ -1629,5 +2141,90 @@ window.__APP_STARTED__ = true;
 initMap();
 });
   </script>
+<!-- ===== Admin CRUD Modal ===== -->
+<div class="pick-banner" id="pickBanner">📍 Clique no mapa para capturar a posição…</div>
+
+<div class="modal-backdrop" id="adminModalBackdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
+    <div class="modal-header">
+      <div class="modal-title" id="adminModalTitle">Admin • Alterações</div>
+      <button class="modal-close" id="adminModalClose">Fechar</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <div class="tab active" data-tab="cto">CTOs</div>
+        <div class="tab" data-tab="ce">CE/CDO</div>
+        <div class="tab" data-tab="rota">Rotas</div>
+      </div>
+
+      <!-- CTO -->
+      <div class="panel" data-panel="cto">
+        <div class="form-grid">
+          <div class="field"><label>CTO ID</label><input id="cto_id" placeholder="CTO001" /></div>
+          <div class="field"><label>Nome</label><input id="cto_nome" placeholder="CTO 001" /></div>
+          <div class="field"><label>Latitude</label><input id="cto_lat" placeholder="-22.412" /></div>
+          <div class="field"><label>Longitude</label><input id="cto_lng" placeholder="-43.166" /></div>
+          <div class="field full">
+            <div class="hint">Dica: você pode clicar no mapa para preencher Lat/Lng.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="btnPickCTO">Selecionar no mapa</button>
+          <button class="btn-danger" id="btnModalDelCTO">Remover</button>
+          <button class="btn-primary" id="btnModalAddCTO">Salvar</button>
+        </div>
+      </div>
+
+      <!-- CE/CDO -->
+      <div class="panel" data-panel="ce" style="display:none">
+        <div class="form-grid">
+          <div class="field"><label>ID</label><input id="ce_id" placeholder="CE001" /></div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="ce_tipo">
+              <option value="CE">CE</option>
+              <option value="CDO">CDO</option>
+            </select>
+          </div>
+          <div class="field"><label>Nome</label><input id="ce_nome" placeholder="CE 001" /></div>
+          <div class="field"><label>Observação</label><input id="ce_obs" placeholder="" /></div>
+          <div class="field"><label>Latitude</label><input id="ce_lat" placeholder="-22.412" /></div>
+          <div class="field"><label>Longitude</label><input id="ce_lng" placeholder="-43.166" /></div>
+          <div class="field full">
+            <div class="hint">Dica: clique no mapa para preencher Lat/Lng.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="btnPickCE">Selecionar no mapa</button>
+          <button class="btn-danger" id="btnModalDelCE">Remover</button>
+          <button class="btn-primary" id="btnModalAddCE">Salvar</button>
+        </div>
+      </div>
+
+      <!-- Rota -->
+      <div class="panel" data-panel="rota" style="display:none">
+        <div class="form-grid">
+          <div class="field"><label>Rota ID</label><input id="rota_id" placeholder="R001" /></div>
+          <div class="field"><label>Nome</label><input id="rota_nome" placeholder="Rota 001" /></div>
+          <div class="field full">
+            <label>GeoJSON</label>
+            <textarea id="rota_geojson" placeholder='{"type":"Feature","geometry":{...},"properties":{...}}'></textarea>
+            <div class="hint">Para rotas, cole um GeoJSON de LineString/MultiLineString.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-ghost" id="btnDrawRota">Desenhar no mapa</button>
+            <button class="btn-ghost" id="btnRotaUndo" style="display:none">Desfazer</button>
+            <button class="btn-ghost" id="btnRotaCancel" style="display:none">Cancelar</button>
+            <button class="btn-primary" id="btnRotaFinish" style="display:none">Concluir</button>
+            <button class="btn-danger" id="btnModalDelRota">Remover</button>
+          <button class="btn-primary" id="btnModalAddRota">Salvar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
