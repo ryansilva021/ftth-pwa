@@ -217,7 +217,17 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
     </div>
     <div class="right">
       <div class="userpill" id="userPill">👤 <span id="userName">—</span></div>
-      <button class="logoutBtn" id="btnLogout" title="Sair">Sair</button>
+      <div id="adminMenu" class="adminMenu" data-requires-admin style="display:none; align-items:center; gap:8px; margin-right:10px;">
+  <span class="pill">Admin</span>
+  <button class="btn small" id="btnAddCTO">+ CTO</button>
+  <button class="btn small" id="btnDelCTO">- CTO</button>
+  <button class="btn small" id="btnAddRota">+ Rota</button>
+  <button class="btn small" id="btnDelRota">- Rota</button>
+  <button class="btn small" id="btnAddCE">+ CE/CDO</button>
+  <button class="btn small" id="btnDelCE">- CE/CDO</button>
+</div>
+
+<button class="logoutBtn" id="btnLogout" title="Sair">Sair</button>
     </div>
   </header>
 
@@ -356,6 +366,16 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
       function getAuthUser(){ return localStorage.getItem(AUTH_USER_KEY) || ""; }
 
       function getAuthRole(){ return localStorage.getItem(AUTH_ROLE_KEY) || "user"; }
+function applyPermissionsToUI(){
+  const role = (typeof getAuthRole === "function") ? getAuthRole() : "user";
+  const isAdmin = role === "admin";
+  document.documentElement.dataset.role = role;
+  // Esconde tudo marcado como admin-only
+  document.querySelectorAll("[data-requires-admin]").forEach((el)=>{
+    el.style.display = isAdmin ? "" : "none";
+  });
+}
+
       function setAuth(token, user, role){
         if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
         if (user)  localStorage.setItem(AUTH_USER_KEY, user);
@@ -399,7 +419,97 @@ window.PROJECT_CENTER = [-43.166, -22.412]; // [lng, lat]
         return h;
       }
 
-      async function authFetch(url, opts={}){
+      // ===== Admin CRUD (CTOs / Rotas / CE-CDO) =====
+function assertAdmin(){
+  const role = getAuthRole();
+  if (role !== "admin"){
+    showPopup("Sem permissão", "Apenas administradores podem alterar CTOs, Rotas e CE/CDO.");
+    return false;
+  }
+  return true;
+}
+
+async function adminCrud(path, method, payload){
+  if (!assertAdmin()) return null;
+  const res = await authFetch(`${window.WORKER_URL}${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+  const text = await res.text();
+  let data = null;
+  try{ data = JSON.parse(text); }catch(_){ data = { raw: text }; }
+  if (!res.ok){
+    const msg = data?.error ? String(data.error) : `HTTP ${res.status}`;
+    showPopup("Erro", msg);
+    return null;
+  }
+  return data;
+}
+
+function promptJson(title, exampleObj){
+  const ex = exampleObj ? JSON.stringify(exampleObj, null, 2) : "{\n  \n}";
+  const raw = prompt(title + "\nCole um JSON válido:", ex);
+  if (raw == null) return null;
+  try{
+    return JSON.parse(raw);
+  }catch(e){
+    showPopup("JSON inválido", String(e));
+    return null;
+  }
+}
+
+async function adminAddCTO(){
+  const payload = promptJson("Adicionar/Atualizar CTO (POST /api/ctos)", { cto_id: "CTO001", nome: "CTO 001", lat: -22.0, lng: -41.0 });
+  if (!payload) return;
+  const r = await adminCrud("/api/ctos", "POST", payload);
+  if (r) { showPopup("OK", "CTO enviado."); try{ refreshAllData(); }catch(_){ } }
+}
+async function adminDelCTO(){
+  const payload = promptJson("Remover CTO (DELETE /api/ctos) — informe o identificador", { cto_id: "CTO001" });
+  if (!payload) return;
+  const r = await adminCrud("/api/ctos", "DELETE", payload);
+  if (r) { showPopup("OK", "CTO removido."); try{ refreshAllData(); }catch(_){ } }
+}
+
+async function adminAddRota(){
+  const payload = promptJson("Adicionar/Atualizar Rota (POST /api/rotas_fibras)", { rota_id: "R001", nome: "Rota 001", geojson: "{...}" });
+  if (!payload) return;
+  const r = await adminCrud("/api/rotas_fibras", "POST", payload);
+  if (r) { showPopup("OK", "Rota enviada."); try{ refreshAllData(); }catch(_){ } }
+}
+async function adminDelRota(){
+  const payload = promptJson("Remover Rota (DELETE /api/rotas_fibras) — informe o identificador", { rota_id: "R001" });
+  if (!payload) return;
+  const r = await adminCrud("/api/rotas_fibras", "DELETE", payload);
+  if (r) { showPopup("OK", "Rota removida."); try{ refreshAllData(); }catch(_){ } }
+}
+
+async function adminAddCECDO(){
+  const payload = promptJson("Adicionar/Atualizar CE/CDO (POST /api/caixas_emenda_cdo)", { id: "CE001", nome: "CE 001", lat: -22.0, lng: -41.0, tipo: "CE" });
+  if (!payload) return;
+  const r = await adminCrud("/api/caixas_emenda_cdo", "POST", payload);
+  if (r) { showPopup("OK", "CE/CDO enviado."); try{ refreshAllData(); }catch(_){ } }
+}
+async function adminDelCECDO(){
+  const payload = promptJson("Remover CE/CDO (DELETE /api/caixas_emenda_cdo) — informe o identificador", { id: "CE001" });
+  if (!payload) return;
+  const r = await adminCrud("/api/caixas_emenda_cdo", "DELETE", payload);
+  if (r) { showPopup("OK", "CE/CDO removido."); try{ refreshAllData(); }catch(_){ } }
+}
+
+// Tenta chamar uma função de refresh que já exista no seu app
+function refreshAllData(){
+  // nomes comuns (ajuste se você já tiver um)
+  if (typeof reloadAll === "function") return reloadAll();
+  if (typeof reloadData === "function") return reloadData();
+  if (typeof refreshLayers === "function") return refreshLayers();
+  if (typeof loadAllData === "function") return loadAllData();
+  // fallback: recarrega a página
+  location.reload();
+}
+
+async function authFetch(url, opts={}){
         const headers = authHeaders(opts.headers || {});
         const res = await fetch(url, { ...opts, headers });
         if (res.status === 401){
@@ -466,6 +576,7 @@ fetchMeRole().then(()=>{
   const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
   const el = document.getElementById('userName');
   if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
 });
 window.__APP_STARTED__ = true;
 initMap();
@@ -507,6 +618,22 @@ initMap();
   if (btn) btn.addEventListener("click", () => { doLogout(); });
 })();
 
+// __bindAdminCrud__
+(function(){
+  const b1 = document.getElementById("btnAddCTO");
+  const b2 = document.getElementById("btnDelCTO");
+  const b3 = document.getElementById("btnAddRota");
+  const b4 = document.getElementById("btnDelRota");
+  const b5 = document.getElementById("btnAddCE");
+  const b6 = document.getElementById("btnDelCE");
+  if (b1) b1.addEventListener("click", adminAddCTO);
+  if (b2) b2.addEventListener("click", adminDelCTO);
+  if (b3) b3.addEventListener("click", adminAddRota);
+  if (b4) b4.addEventListener("click", adminDelRota);
+  if (b5) b5.addEventListener("click", adminAddCECDO);
+  if (b6) b6.addEventListener("click", adminDelCECDO);
+})();
+
 function checkAuthOrShowLogin(){
         const token = getAuthToken();
         if (!token){
@@ -517,6 +644,8 @@ function checkAuthOrShowLogin(){
         const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
         const el = document.getElementById('userName');
         if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
+        applyPermissionsToUI();
         return true;
       }
 
@@ -1494,6 +1623,7 @@ fetchMeRole().then(()=>{
   const u = getAuthUser() || localStorage.getItem('ftth_user') || '—';
   const el = document.getElementById('userName');
   if (el) el.textContent = `${u} (${getAuthRole()})`;
+        applyPermissionsToUI();
 });
 window.__APP_STARTED__ = true;
 initMap();
