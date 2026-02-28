@@ -568,6 +568,12 @@ async function adminCrud(path, method, payload){
     showPopup("Erro", msg);
     return null;
   }
+  // Alguns backends podem retornar 200 com {ok:false}; trate como erro
+  if (data && data.ok === false){
+    const msg = data.error ? String(data.error) : "Falha ao salvar";
+    showPopup("Erro", msg);
+    return null;
+  }
   return data;
 }
 
